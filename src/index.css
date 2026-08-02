@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+    /* A coach's palm rests on the tablet; block pull-to-refresh entirely. */
+    overscroll-behavior: none;
+  }
+}
+
+@layer components {
+  /* Every interactive control clears the 48x48 px tablet tap target. */
+  .btn {
+    @apply inline-flex min-h-tap min-w-tap items-center justify-center gap-2
+           rounded-2xl px-5 text-base font-semibold tracking-wide
+           transition-colors select-none disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn bg-signal-accent text-slate-950 active:bg-cyan-300;
+  }
+
+  .btn-ghost {
+    @apply btn border border-court-line bg-court-panel text-slate-200 active:bg-slate-800;
+  }
+
+  .btn-danger {
+    @apply btn border border-red-500/40 bg-red-500/10 text-red-300 active:bg-red-500/20;
+  }
+
+  .panel {
+    @apply rounded-3xl border border-court-line bg-court-panel/80 p-4;
+  }
+
+  /* Fat, glove-friendly range thumbs for timeline scrubbing. */
+  .scrub {
+    @apply h-12 w-full cursor-pointer appearance-none bg-transparent;
+  }
+
+  .scrub::-webkit-slider-runnable-track {
+    @apply h-2 rounded-full bg-court-line;
+  }
+
+  .scrub::-webkit-slider-thumb {
+    @apply h-9 w-9 appearance-none rounded-full border-4 border-slate-950 bg-signal-accent;
+    margin-top: -0.875rem;
+  }
+
+  .scrub::-moz-range-track {
+    @apply h-2 rounded-full bg-court-line;
+  }
+
+  .scrub::-moz-range-thumb {
+    @apply h-9 w-9 rounded-full border-4 border-slate-950 bg-signal-accent;
+  }
+}

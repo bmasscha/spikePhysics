@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Vendored at install time by scripts/copy-mediapipe-assets.mjs
+public/wasm/
+
+# Model file is downloaded once, not committed (~9 MB)
+public/models/*.task
+
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# build output
+dist/
