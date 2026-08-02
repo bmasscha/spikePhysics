@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 
 /** Hard cap from the brief: 5 s keeps the inference pass under a few seconds. */
 const MAX_RECORDING_MS = 5000;
 
 interface Props {
   onClipRecorded: (blob: Blob, url: string) => void;
+  /** Called with a file the coach picked from device storage, plus its object URL. */
+  onVideoImported: (file: File, url: string) => void;
   onUseMockData: () => void;
 }
 
@@ -14,7 +16,11 @@ type CameraState = "idle" | "ready" | "recording" | "denied" | "unsupported";
  * Live preview + MediaRecorder capture. Prefers the rear camera at the widest
  * angle available, because coaches film from the sideline at 5–10 m.
  */
-export default function CameraModule({ onClipRecorded, onUseMockData }: Props) {
+export default function CameraModule({
+  onClipRecorded,
+  onVideoImported,
+  onUseMockData,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -54,7 +60,7 @@ export default function CameraModule({ onClipRecorded, onUseMockData }: Props) {
         setError(
           err instanceof Error && err.name === "NotAllowedError"
             ? "Camera access was blocked. Allow the camera in your browser settings, then reload."
-            : "No camera could be opened. You can still explore the app with demo data.",
+            : "No camera could be opened. You can still import a video from this tablet, or explore the app with demo data.",
         );
       }
     }
@@ -117,6 +123,20 @@ export default function CameraModule({ onClipRecorded, onUseMockData }: Props) {
     stopTimerRef.current = window.setTimeout(stopRecording, MAX_RECORDING_MS);
   }, [onClipRecorded, stopRecording]);
 
+  const handleFileChosen = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const input = event.target;
+      const file = input.files?.[0];
+      // Clear the input before doing anything else: without this, picking the
+      // same file a second time is a no-op because `change` only fires on a
+      // value change. Read `file` first — resetting empties the FileList.
+      input.value = "";
+      if (!file) return;
+      onVideoImported(file, URL.createObjectURL(file));
+    },
+    [onVideoImported],
+  );
+
   const recording = state === "recording";
   const remaining = Math.max(0, MAX_RECORDING_MS - elapsed) / 1000;
 
@@ -156,6 +176,28 @@ export default function CameraModule({ onClipRecorded, onUseMockData }: Props) {
         <button className="btn-ghost" onClick={onUseMockData}>
           Demo clip
         </button>
+
+        {/*
+          Deliberately a <label> wrapping a visually hidden <input>: that is the
+          only way to get the native picker while keeping the control keyboard
+          and screen-reader reachable (sr-only clips the box but leaves it
+          focusable, unlike display:none). It sits outside the preview box, so
+          it stays available when the camera is denied or unsupported — a coach
+          with no camera permission must still be able to analyse a file.
+          No `capture` attribute: that would force the camera on mobile and
+          defeat the point of importing.
+        */}
+        <label className={recording ? "btn-ghost cursor-pointer opacity-40" : "btn-ghost cursor-pointer"}>
+          Import video
+          <input
+            type="file"
+            accept="video/*"
+            aria-label="Import video"
+            className="sr-only"
+            disabled={recording}
+            onChange={handleFileChosen}
+          />
+        </label>
 
         <button
           className={recording ? "btn-danger h-20 w-20 rounded-full" : "btn-primary h-20 w-20 rounded-full"}

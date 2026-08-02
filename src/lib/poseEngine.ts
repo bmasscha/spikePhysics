@@ -69,11 +69,43 @@ export function disposePoseLandmarker(): void {
   void pending?.then((l) => l.close()).catch(() => undefined);
 }
 
+/**
+ * Sampling rate for inference, including for 120/240 fps slow-motion imports.
+ *
+ * Why a fixed 30 rather than following the source: no browser API reports a
+ * file's native frame rate. The usual stand-in, `getVideoPlaybackQuality()`,
+ * counts frames presented since the element was created — but the review stage
+ * seeks instead of playing, so that counter is driven by trim-slider scrubbing,
+ * not by elapsed media time. Dividing it by `currentTime` reads as "hundreds of
+ * fps" for any coach who trims near the start of a short clip, which is a
+ * completely ordinary thing to do.
+ *
+ * Guessing high is not a harmless default. Sampling faster than the source
+ * makes consecutive seeks land on the *same* decoded frame, so the landmarks
+ * repeat, the finite-difference speeds alternate between a real value and zero,
+ * and the kinetic-chain peak ordering is read off a sawtooth. A wrong rate here
+ * corrupts results rather than merely slowing things down, so the rate stays
+ * fixed until it can be measured rather than inferred.
+ *
+ * What is given up: the swing from cocking to contact lasts ~200 ms, so 30 fps
+ * locates each joint's peak-speed frame to ±33 ms. Doubling the rate would
+ * halve that, at the cost of doubling a pass that is already seek-plus-
+ * inference bound (~15–30 ms per frame on a tablet GPU). Measuring the source
+ * rate properly needs a `requestVideoFrameCallback` burst before processing;
+ * that is the follow-up if the extra temporal resolution is wanted.
+ *
+ * Note for slow-motion footage: `timestampMs` is media time, so if the camera
+ * app already time-stretched the clip (240 fps captured, written back as a
+ * 30 fps file that plays 8x slow), the speeds reported are the *played* speeds,
+ * not the athlete's. Export slow motion at its real rate for true figures.
+ */
+export const DEFAULT_SAMPLE_FPS = 30;
+
 export interface ProcessOptions {
   /** Clip window in seconds, from the trim slider. */
   startSeconds?: number;
   endSeconds?: number;
-  /** Sampling rate for inference. 30 keeps a 5 s clip under ~150 frames. */
+  /** Sampling rate for inference. See {@link DEFAULT_SAMPLE_FPS}. */
   targetFps?: number;
   /** Abort if a single frame takes longer than this. */
   frameTimeoutMs?: number;
@@ -113,7 +145,7 @@ export async function processVideoElement(
   const {
     startSeconds = 0,
     endSeconds = video.duration,
-    targetFps = 30,
+    targetFps = DEFAULT_SAMPLE_FPS,
     frameTimeoutMs = 4000,
     onProgress,
     signal,
@@ -122,11 +154,17 @@ export async function processVideoElement(
   if (!Number.isFinite(video.duration) || video.duration === 0) {
     throw new PoseEngineError(
       "Video metadata not ready",
-      "The recording could not be read. Record the clip again.",
+      "This clip could not be read. Pick another file, or record directly in SpikePhysics.",
     );
   }
 
   const landmarker = await getPoseLandmarker();
+  // Rotation needs no correction here: the HTML spec defines videoWidth/
+  // videoHeight as the dimensions *after* the container's rotation matrix is
+  // applied, and MediaPipe reads the same already-rotated frame we hand it. So
+  // a portrait phone clip reports e.g. 1080x1920 and the normalized landmarks
+  // are relative to that upright frame — which is exactly the space
+  // SkeletonOverlay draws in. Nothing to unwind.
   const width = video.videoWidth;
   const height = video.videoHeight;
   const end = Math.min(endSeconds, video.duration);
@@ -146,6 +184,9 @@ export async function processVideoElement(
     const landmarks = toLandmarks(result, width, height);
     if (landmarks.length === 0) missedFrames += 1;
 
+    // timestampMs is derived from the real media time, never from the frame
+    // index — dt everywhere in the physics reads it, so it must stay truthful
+    // whatever sampling rate was chosen above.
     frames.push({ index: i, timestampMs: (time - startSeconds) * 1000, landmarks });
     onProgress?.((i + 1) / frameCount);
   }
@@ -157,6 +198,8 @@ export async function processVideoElement(
     );
   }
 
+  // fps must report the rate actually sampled, not the default — smoothing
+  // window sizes and every per-second figure downstream are derived from it.
   return { frames, fps: targetFps, videoWidth: width, videoHeight: height };
 }
 
