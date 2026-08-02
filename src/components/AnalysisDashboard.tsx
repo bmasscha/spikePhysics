@@ -103,13 +103,13 @@ export default function AnalysisDashboard({
       : 16 / 9;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto lg:grid lg:grid-cols-2 lg:overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto split:grid split:grid-cols-2 split:overflow-hidden">
       <div className="flex min-h-0 flex-col gap-3">
         <div
           // Portrait: a box sized by the clip's own aspect ratio, capped so the
           // charts below always stay within a scroll or two. Landscape: back to
           // filling the leftover column height.
-          className="relative aspect-[var(--clip-aspect)] max-h-[55vh] w-full shrink-0 overflow-hidden rounded-3xl bg-black lg:aspect-auto lg:max-h-none lg:min-h-0 lg:flex-1 lg:shrink"
+          className="relative aspect-[var(--clip-aspect)] max-h-[55vh] w-full shrink-0 overflow-hidden rounded-3xl bg-black split:aspect-auto split:max-h-none split:min-h-0 split:flex-1 split:shrink"
           style={{ "--clip-aspect": String(clipAspect) } as CSSProperties}
         >
           {videoUrl ? (
@@ -177,7 +177,7 @@ export default function AnalysisDashboard({
         <MetricScorecard analysis={analysis} />
       </div>
 
-      <div className="min-h-0 lg:overflow-y-auto">
+      <div className="min-h-0 split:overflow-y-auto">
         <MetricCharts
           analysis={analysis}
           frameIndex={frameIndex}

@@ -262,8 +262,8 @@ export default function App() {
         : "Can't read this video";
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3">
-      <header className="flex items-center justify-between px-1">
+    <div className="flex h-full flex-col gap-3 p-safe">
+      <header className="flex items-center justify-between px-safe-1">
         <h1 className="text-xl font-black tracking-tight">
           Spike<span className="text-signal-accent">Physics</span>
         </h1>
@@ -295,7 +295,7 @@ export default function App() {
         )}
 
         {stage === "review" && clip && (
-          <div className="grid h-full gap-4 lg:grid-cols-2">
+          <div className="grid h-full gap-4 split:grid-cols-2">
             <div className="overflow-hidden rounded-3xl bg-black">
               <video
                 ref={reviewVideoRef}

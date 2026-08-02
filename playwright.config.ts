@@ -36,6 +36,14 @@ export default defineConfig({
       name: "portrait",
       use: { ...devices["Desktop Chrome"], viewport: { width: 800, height: 1280 } },
     },
+    {
+      name: "portrait-large-tablet",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1024, height: 1366 } },
+    },
+    {
+      name: "landscape-phone",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 844, height: 390 } },
+    },
   ],
 
   webServer: {

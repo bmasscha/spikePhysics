@@ -35,7 +35,7 @@ export default defineConfig(({ command, isPreview }) => ({
         theme_color: "#020617",
         background_color: "#020617",
         display: "fullscreen",
-        orientation: "landscape",
+        orientation: "any",
         // Relative, so the installed app works both at the domain root and
         // under the /spikePhysics/ project path.
         id: "./",

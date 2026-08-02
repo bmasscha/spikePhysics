@@ -109,12 +109,13 @@ height inflated its row rather than fitting the space. On an 800x1280 portrait
 viewport the grid rows measured `1915px 0px` — the chart row was squeezed to
 nothing and its `overflow-y-auto` clipped the charts out of existence.
 
-Two rules keep it fixed, and `e2e/charts.spec.ts` enforces both in a real
-browser at both orientations:
+Three rules keep it fixed, and `e2e/charts.spec.ts` enforces them in a real
+browser at all orientations and viewport combinations:
 
-1. every flex/grid child on the path to the video carries `min-h-0`, and
-2. the video box takes its height from an aspect-ratio box (capped in `vh`),
+1. Every flex/grid child on the path to the video carries `min-h-0`.
+2. The video box takes its height from an aspect-ratio box (capped in `vh`),
    never from the video's own intrinsic size.
+3. **Orientation layout is decided by the `split:` screen query.** Instead of the hardcoded width-based `lg:` breakpoint (which forces unreadable side-by-side layouts on portrait iPad Pros at 1024px width, and squishes landscape phones at 390px height), layout transitions are controlled by a custom Tailwind media query: `(orientation: landscape) and (min-height: 600px)`. This query translates to "there is actually room for two columns side by side". This ensures that phones and portrait tablets stay in the robust stacked layout while landscape tablets transition to a side-by-side split layout. Because this decision is entirely CSS-driven, rotation preserves the DOM tree intact; the `<video>` node is never unmounted, ensuring `currentTime`, buffered state, and play-head are perfectly preserved across rotations.
 
 Unit tests cannot cover this — jsdom has no layout engine, which is exactly why
 the bug shipped. Anything about sizing belongs in the Playwright suite.

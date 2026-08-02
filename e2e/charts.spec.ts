@@ -103,4 +103,125 @@ test.describe("chart visibility", () => {
 
     await expect(readout).not.toHaveText(before!);
   });
+
+  test("rotating mid-session preserves video node state and covers video box", async ({ page }) => {
+    await serveDemoVideo(page, LANDSCAPE_CLIP);
+    await openDashboard(page, `?demoVideo=${DEMO_VIDEO_NAME}`);
+
+    const video = page.locator("main video");
+    await expect(video).toBeVisible();
+
+    // Wait until the video's metadata is loaded and seekable
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+      .toBeGreaterThanOrEqual(3);
+
+    // Play the video briefly to move its currentTime past 0
+    await video.evaluate(async (el: HTMLVideoElement) => {
+      el.muted = true;
+      await el.play();
+    });
+
+    // Wait until currentTime has advanced past 0
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeGreaterThan(0.1);
+
+    // Pause the video to hold its current state
+    await video.evaluate((el: HTMLVideoElement) => {
+      el.pause();
+    });
+
+    // Retrieve the exact time it paused at
+    const initialTime = await video.evaluate((el: HTMLVideoElement) => el.currentTime);
+    expect(initialTime).toBeGreaterThan(0.1);
+
+    // Mark the video element to track its DOM identity
+    await video.evaluate((el: HTMLVideoElement) => {
+      el.dataset.testIdentityMarker = "rotation-survivor";
+    });
+
+    // Check pre-rotation viewport dynamics
+    const originalViewport = page.viewportSize()!;
+    const targetWidth = originalViewport.height;
+    const targetHeight = originalViewport.width;
+
+    // Rotate the screen by swapping viewport axes
+    await page.setViewportSize({ width: targetWidth, height: targetHeight });
+
+    // Assert video element identity survives and currentTime is preserved
+    const videoData = await video.evaluate((el: HTMLVideoElement) => ({
+      marker: el.dataset.testIdentityMarker,
+      currentTime: el.currentTime,
+    }));
+    expect(videoData.marker, "video node identity should be preserved").toBe("rotation-survivor");
+    expect(videoData.currentTime, "video currentTime should not reset").toBeCloseTo(initialTime, 2);
+
+    // Assert both chart panels are still taller than 100 px and still reachable
+    for (const id of PANELS) {
+      await expectPanelUsable(page, page.getByTestId(id), `${id} (rotated)`);
+    }
+
+    // Assert skeleton canvas covers the video box (its boundaries are identical or overlap the video element)
+    const canvas = page.locator("main canvas");
+    await expect(canvas).toBeVisible();
+    const videoBox = (await video.boundingBox())!;
+    const canvasBox = (await canvas.boundingBox())!;
+
+    // Bounding boxes should match or be almost exactly equal (within small layout tolerance)
+    expect(canvasBox.width).toBeCloseTo(videoBox.width, 1);
+    expect(canvasBox.height).toBeCloseTo(videoBox.height, 1);
+    expect(canvasBox.x).toBeCloseTo(videoBox.x, 1);
+    expect(canvasBox.y).toBeCloseTo(videoBox.y, 1);
+  });
+
+  test("simulated safe-area inset shifts the outer shell and header padding", async ({ page }) => {
+    await serveDemoVideo(page, LANDSCAPE_CLIP);
+    await openDashboard(page, `?demoVideo=${DEMO_VIDEO_NAME}`);
+
+    const outerShell = page.locator(".p-safe");
+    await expect(outerShell).toBeVisible();
+
+    // Measure original padding / styles of outerShell and header in base condition (no safe area inset)
+    const initialStyles = await page.evaluate(() => {
+      const shell = document.querySelector(".p-safe")!;
+      const header = document.querySelector(".px-safe-1")!;
+      const shellStyle = window.getComputedStyle(shell);
+      const headerStyle = window.getComputedStyle(header);
+      return {
+        shellLeft: parseFloat(shellStyle.paddingLeft),
+        shellTop: parseFloat(shellStyle.paddingTop),
+        headerLeft: parseFloat(headerStyle.paddingLeft),
+      };
+    });
+
+    expect(initialStyles.shellLeft).toBe(12);
+    expect(initialStyles.shellTop).toBe(12);
+    expect(initialStyles.headerLeft).toBe(4);
+
+    // Simulate safe area inset by setting CSS variables
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty("--safe-area-left", "40px");
+      document.documentElement.style.setProperty("--safe-area-top", "24px");
+      document.documentElement.style.setProperty("--safe-area-right", "40px");
+      document.documentElement.style.setProperty("--safe-area-bottom", "24px");
+    });
+
+    // Verify paddings are updated to at least the safe area bounds
+    const updatedStyles = await page.evaluate(() => {
+      const shell = document.querySelector(".p-safe")!;
+      const header = document.querySelector(".px-safe-1")!;
+      const shellStyle = window.getComputedStyle(shell);
+      const headerStyle = window.getComputedStyle(header);
+      return {
+        shellLeft: parseFloat(shellStyle.paddingLeft),
+        shellTop: parseFloat(shellStyle.paddingTop),
+        headerLeft: parseFloat(headerStyle.paddingLeft),
+      };
+    });
+
+    expect(updatedStyles.shellLeft).toBe(40);
+    expect(updatedStyles.shellTop).toBe(24);
+    expect(updatedStyles.headerLeft).toBe(40); // px-safe-1 has max(0.25rem, env(safe-area-inset-left)) which should be 40px
+  });
 });

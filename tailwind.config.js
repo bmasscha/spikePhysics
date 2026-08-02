@@ -3,6 +3,14 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      screens: {
+        // Two-column layout is only appropriate when in landscape AND we have enough
+        // vertical height to show the video and charts side-by-side.
+        // - Pure 'landscape' will force two columns on a phone (e.g., 844x390), squishing them.
+        // - Pure width 'lg:' (1024px) will force two columns on a large portrait tablet (1024x1366).
+        // Using both orientation and a minimum height of 600px perfectly targets tablets in landscape.
+        split: { raw: "(orientation: landscape) and (min-height: 600px)" },
+      },
       colors: {
         // High-contrast palette tuned for harsh sports-hall lighting.
         court: {
