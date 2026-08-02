@@ -78,7 +78,7 @@ export default function MetricCharts({ analysis, frameIndex, onSeekFrame }: Prop
 
   return (
     <div className="flex flex-col gap-3">
-      <section className="panel">
+      <section className="panel" data-testid="chart-joint-speed">
         <header className="mb-2 flex items-center justify-between">
           <h3 className="font-semibold">Kinetic chain — joint speed</h3>
           <div className="flex gap-3 text-xs">
@@ -147,7 +147,7 @@ export default function MetricCharts({ analysis, frameIndex, onSeekFrame }: Prop
         </ResponsiveContainer>
       </section>
 
-      <section className="panel">
+      <section className="panel" data-testid="chart-angles">
         <header className="mb-2 flex items-center justify-between">
           <h3 className="font-semibold">Shoulder abduction &amp; elbow angle</h3>
           <span className="text-xs text-slate-400">degrees</span>

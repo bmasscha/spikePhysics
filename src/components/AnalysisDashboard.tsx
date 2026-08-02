@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import MetricCharts from "./MetricCharts";
 import MetricScorecard from "./MetricScorecard";
 import SkeletonOverlay from "./SkeletonOverlay";
@@ -17,6 +17,21 @@ interface Props {
  * Split view: video plus overlay on one side, graphs on the other, sharing a
  * single play-head. The frame index is the one source of truth — the video and
  * the charts both follow it, so scrubbing either stays in sync.
+ *
+ * Layout note — this is what caused charts to vanish on real footage. A <video>
+ * has an intrinsic size and an empty placeholder <div> does not, so the demo
+ * path and the recorded path laid out differently. Flex and grid children
+ * default to `min-height: auto`, which refuses to shrink below content, so the
+ * video's intrinsic height inflated its row instead of fitting the space. In
+ * portrait that pushed the second grid row to 0 px and its `overflow-y-auto`
+ * clipped the charts entirely. Two rules keep that from coming back:
+ *
+ *  1. every flex/grid child on the path to the video carries `min-h-0`, and
+ *  2. the video box's height comes from an aspect-ratio box (capped by vh),
+ *     never from the video's own intrinsic size.
+ *
+ * Portrait scrolls the whole dashboard as one surface; only landscape, where
+ * everything fits, gives the chart column its own scroller.
  */
 export default function AnalysisDashboard({
   sequence,
@@ -80,10 +95,23 @@ export default function AnalysisDashboard({
     seekToFrame(frame);
   };
 
+  // Drives the aspect-ratio box below. Falling back to 16:9 keeps the box sane
+  // if a sequence ever arrives without dimensions.
+  const clipAspect =
+    sequence.videoWidth > 0 && sequence.videoHeight > 0
+      ? sequence.videoWidth / sequence.videoHeight
+      : 16 / 9;
+
   return (
-    <div className="grid h-full gap-4 lg:grid-cols-2">
-      <div className="flex flex-col gap-3">
-        <div className="relative flex-1 overflow-hidden rounded-3xl bg-black">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto lg:grid lg:grid-cols-2 lg:overflow-hidden">
+      <div className="flex min-h-0 flex-col gap-3">
+        <div
+          // Portrait: a box sized by the clip's own aspect ratio, capped so the
+          // charts below always stay within a scroll or two. Landscape: back to
+          // filling the leftover column height.
+          className="relative aspect-[var(--clip-aspect)] max-h-[55vh] w-full shrink-0 overflow-hidden rounded-3xl bg-black lg:aspect-auto lg:max-h-none lg:min-h-0 lg:flex-1 lg:shrink"
+          style={{ "--clip-aspect": String(clipAspect) } as CSSProperties}
+        >
           {videoUrl ? (
             <video
               ref={videoRef}
@@ -149,7 +177,7 @@ export default function AnalysisDashboard({
         <MetricScorecard analysis={analysis} />
       </div>
 
-      <div className="overflow-y-auto">
+      <div className="min-h-0 lg:overflow-y-auto">
         <MetricCharts
           analysis={analysis}
           frameIndex={frameIndex}
