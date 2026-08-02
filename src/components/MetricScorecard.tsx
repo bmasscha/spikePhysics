@@ -20,15 +20,15 @@ function Card({
 }) {
   const style = RATING_STYLE[rating];
   return (
-    <div className={`rounded-2xl border ${style.ring} bg-court-panel/60 p-4`}>
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h4 className="text-sm uppercase tracking-wide text-slate-400">{title}</h4>
-        <span className={`rounded-full px-3 py-1 text-xs font-bold ${style.badge}`}>
-          {style.icon} {rating}
+    <div className={`rounded-2xl border ${style.ring} bg-court-panel/60 p-4 split:p-2.5 flex flex-col justify-between min-w-0`}>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h4 className="text-sm uppercase tracking-wide text-slate-400 truncate split:text-[10px]">{title}</h4>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold split:px-1.5 split:py-0.5 split:text-[10px] ${style.badge}`}>
+          {style.icon} <span className="split:hidden">{rating}</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-slate-100">{headline}</p>
-      <p className="mt-1 text-sm leading-snug text-slate-400">{detail}</p>
+      <p className="text-2xl font-bold text-slate-100 split:text-lg">{headline}</p>
+      <p className="mt-1 text-sm leading-snug text-slate-400 split:hidden">{detail}</p>
     </div>
   );
 }
@@ -37,7 +37,7 @@ export default function MetricScorecard({ analysis }: { analysis: AnalysisResult
   const { abductionAtContact, kineticChain, elbowTiming } = analysis;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <Card
         title="Shoulder abduction at contact"
         headline={
@@ -72,7 +72,7 @@ export default function MetricScorecard({ analysis }: { analysis: AnalysisResult
       {analysis.warnings.map((warning) => (
         <p
           key={warning}
-          className="rounded-2xl border border-signal-warn/30 bg-signal-warn/10 p-3 text-sm text-signal-warn"
+          className="rounded-2xl border border-signal-warn/30 bg-signal-warn/10 p-3 text-sm text-signal-warn sm:col-span-3"
         >
           {warning}
         </p>
