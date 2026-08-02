@@ -30,9 +30,9 @@ whole dashboard from the synthetic generator.
 
 ## Deployment
 
-Pushing to `main` runs the tests, builds and publishes to GitHub Pages via
-`.github/workflows/deploy.yml`. One-time repo setup:
-**Settings → Pages → Source: GitHub Actions**.
+Pushing to `main` runs the tests, builds, and force-pushes `dist/` to the
+`gh-pages` branch, which is what Pages serves. No repo settings to configure —
+Pages enabled itself when that branch first appeared.
 
 The workflow downloads the pose model at build time, so the deployed app can do
 live inference without the 9 MB blob ever entering git history. The production
