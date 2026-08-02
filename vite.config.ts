@@ -9,8 +9,13 @@ import { VitePWA } from "vite-plugin-pwa";
 // leading-slash path — see src/lib/poseEngine.ts.
 const BASE = "/spikePhysics/";
 
-export default defineConfig(({ command }) => ({
-  base: command === "build" ? BASE : "/",
+export default defineConfig(({ command, isPreview }) => ({
+  // `vite preview` reports command === "serve", so without isPreview it would
+  // serve the production bundle at "/" while index.html asks for
+  // /spikePhysics/assets/* — every script 404s and the page renders blank.
+  // Previewing a build is the only local way to exercise the base path, so it
+  // has to match production.
+  base: command === "build" || isPreview ? BASE : "/",
   plugins: [
     react(),
     VitePWA({

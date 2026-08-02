@@ -29,6 +29,15 @@ jobs:
 
       - run: npm test
 
+      - run: npm run typecheck
+
+      # The chart panels collapsing to zero height is a layout bug, and jsdom has
+      # no layout engine — only a real browser can catch a regression here.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
       # The pose model is ~9 MB and deliberately not committed; fetch it here so
       # the deployed app can run live inference, not just the demo clip.
       - name: Fetch pose model

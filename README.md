@@ -18,9 +18,15 @@ curl -L -o public/models/pose_landmarker_full.task \
   https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task
 
 npm run dev                  # http://localhost:5173, also served on the LAN
-npm test                     # physics unit tests
+npm test                     # physics + component unit tests (jsdom)
+npm run typecheck
+npm run test:e2e             # Playwright; builds and previews first
 npm run build && npm run preview
 ```
+
+`npm run test:e2e` needs a browser once: `npx playwright install chromium`.
+It runs against the **production preview**, not the dev server, so the
+`/spikePhysics/` base path is exercised the same way Pages serves it.
 
 The camera needs a secure context. `localhost` counts; to test from a tablet on
 the LAN, serve the built app over HTTPS or use a tunnel.
@@ -30,9 +36,10 @@ whole dashboard from the synthetic generator.
 
 ## Deployment
 
-Pushing to `main` runs the tests, builds, and force-pushes `dist/` to the
-`gh-pages` branch, which is what Pages serves. No repo settings to configure —
-Pages enabled itself when that branch first appeared.
+Pushing to `main` runs the unit tests, the typecheck and the Playwright suite,
+builds, and force-pushes `dist/` to the `gh-pages` branch, which is what Pages
+serves. No repo settings to configure — Pages enabled itself when that branch
+first appeared.
 
 The workflow downloads the pose model at build time, so the deployed app can do
 live inference without the 9 MB blob ever entering git history. The production
@@ -50,13 +57,67 @@ src/
     smoothing.ts       Savitzky-Golay + moving average over landmark trajectories
     landmarks.ts       MediaPipe indices, hitting-side detection, skeleton topology
     poseEngine.ts      Tasks-Vision wrapper; seeks a video and returns landmarks
+    videoDuration.ts   forces a real duration out of a clip that reports Infinity
     mockData.ts        synthetic spike generator (dev fixture + test ground truth)
   components/          camera, trim slider, overlay, charts, scorecard, dashboard
   types/pose.ts        shared landmark/analysis types
+e2e/                   Playwright specs + tiny committed video fixtures
 ```
 
-Pipeline: **record → trim → `processVideoElement` → `smoothSequence` →
+Pipeline: **record or import → trim → `processVideoElement` → `smoothSequence` →
 `analyzeSequence` → dashboard.**
+
+## Importing footage instead of recording
+
+*Import video* on the capture screen opens the tablet's own file picker, so
+footage already shot with the native camera app — including 120/240 fps slow
+motion, which is far better for a swing than what `MediaRecorder` produces —
+goes through exactly the same pipeline as a recording. The control stays
+available when the camera is blocked or unsupported. The file is read locally
+only; its object URL is revoked when the clip is replaced or the session is
+deleted, and nothing is ever copied anywhere persistent.
+
+Three things are worth knowing:
+
+- Long clips default their trim window to the **last 10 seconds**, because the
+  spike is nearly always at the end of what a coach filmed. `MAX_ANALYSIS_SECONDS`
+  in `src/App.tsx` caps what is actually processed; a wider selection is
+  analysed from its start and the coach is told so on screen rather than having
+  it truncated silently.
+- `video.duration` is frequently `Infinity` until the element has been seeked —
+  both for Chrome's `MediaRecorder` blobs and for some phone containers.
+  `src/lib/videoDuration.ts` forces it to resolve; a file that never yields a
+  duration, or that the browser cannot decode, produces a coaching-toned
+  recovery message rather than a stuck spinner.
+- Inference always samples at `DEFAULT_SAMPLE_FPS` (30) in `poseEngine.ts`, even
+  for slow-motion sources. No browser API reports a file's real frame rate, and
+  guessing high is worse than sampling low — over-sampling makes consecutive
+  seeks land on the same decoded frame, which turns the speed series into a
+  sawtooth. The full reasoning, and what it costs, is on the constant.
+- If your camera app writes slow motion back as a time-stretched 30 fps file,
+  the speeds reported are the *played* speeds, not the athlete's:
+  `PoseFrame.timestampMs` is media time by design. Export at the real rate for
+  true figures.
+
+## Things worth knowing before you change the dashboard layout
+
+The two chart panels once disappeared entirely after processing real footage,
+while the demo path rendered them fine. The cause was structural, not visual: a
+`<video>` has an intrinsic size and the demo placeholder `<div>` does not, and
+flex/grid children default to `min-height: auto`, so the video's intrinsic
+height inflated its row rather than fitting the space. On an 800x1280 portrait
+viewport the grid rows measured `1915px 0px` — the chart row was squeezed to
+nothing and its `overflow-y-auto` clipped the charts out of existence.
+
+Two rules keep it fixed, and `e2e/charts.spec.ts` enforces both in a real
+browser at both orientations:
+
+1. every flex/grid child on the path to the video carries `min-h-0`, and
+2. the video box takes its height from an aspect-ratio box (capped in `vh`),
+   never from the video's own intrinsic size.
+
+Unit tests cannot cover this — jsdom has no layout engine, which is exactly why
+the bug shipped. Anything about sizing belongs in the Playwright suite.
 
 ## Things worth knowing before you change the physics
 

@@ -17,3 +17,9 @@ public/models/*.task
 
 # build output
 dist/
+*.tsbuildinfo
+
+# Playwright output (the fixtures under e2e/fixtures/ are committed)
+playwright-report/
+test-results/
+.playwright/

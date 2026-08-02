@@ -10,9 +10,11 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "assets": "node scripts/copy-mediapipe-assets.mjs",
     "icons": "node scripts/make-icons.mjs",
+    "fixtures": "node scripts/make-e2e-fixtures.mjs",
     "postinstall": "node scripts/copy-mediapipe-assets.mjs"
   },
   "dependencies": {
@@ -22,7 +24,9 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/react": "^16.0.0",
+    "@types/node": "^26.1.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
