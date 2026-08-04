@@ -12,7 +12,7 @@ import {
   PoseLandmarker,
   type PoseLandmarkerResult,
 } from "@mediapipe/tasks-vision";
-import type { PoseFrame, PoseLandmark, PoseSequence } from "../types/pose";
+import type { PoseFrame, PoseLandmark, PoseSequence, WorldLandmark } from "../types/pose";
 
 // Base-relative, not absolute: on GitHub Pages the app is served from
 // /spikePhysics/, where a leading-slash path would 404.
@@ -113,24 +113,57 @@ export interface ProcessOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Result of a single frame's landmark extraction: pixel-space landmarks plus,
+ * when a pose was detected, MediaPipe's parallel metric world-space track.
+ *
+ * `worldLandmarks` is left `undefined` — not `[]` — exactly when `landmarks`
+ * is `[]`, i.e. no pose was found. Keeping the two "no detection" signals
+ * identical (absent, not an empty array pretending to be data) means callers
+ * can gate on either field with a single truthiness/length check instead of
+ * juggling two different empty states.
+ */
+interface ExtractedLandmarks {
+  landmarks: PoseLandmark[];
+  worldLandmarks?: WorldLandmark[];
+}
+
 function toLandmarks(
   result: PoseLandmarkerResult,
   width: number,
   height: number,
-): PoseLandmark[] {
+): ExtractedLandmarks {
   const pose = result.landmarks[0];
-  if (!pose) return [];
-  return pose.map((lm, i) => ({
+  if (!pose) return { landmarks: [] };
+
+  // World landmarks are MediaPipe's separate metric-space output (metres,
+  // origin at the hip midpoint) — see types/pose.ts's WorldLandmark doc for
+  // why the passing analysis needs them and the spike doesn't. They are
+  // produced alongside `landmarks` whenever a pose is detected, but indexed
+  // access still needs the `?.` guards below in case a future model build
+  // ever omits a point the pixel track has.
+  const world = result.worldLandmarks[0];
+
+  const landmarks = pose.map((lm, i) => ({
     x: lm.x,
     y: lm.y,
     z: lm.z,
     // `visibility` is optional in the typings but populated by this model.
-    visibility: result.worldLandmarks[0]?.[i]?.visibility ?? lm.visibility ?? 1,
+    visibility: world?.[i]?.visibility ?? lm.visibility ?? 1,
     pixelX: lm.x * width,
     pixelY: lm.y * height,
     // MediaPipe scales z like x, so width (not height) is the right factor.
     pixelZ: lm.z * width,
   }));
+
+  const worldLandmarks: WorldLandmark[] | undefined = world?.map((wlm) => ({
+    x: wlm.x,
+    y: wlm.y,
+    z: wlm.z,
+    visibility: wlm.visibility ?? 1,
+  }));
+
+  return { landmarks, worldLandmarks };
 }
 
 /**
@@ -181,13 +214,18 @@ export async function processVideoElement(
     await seekTo(video, time, frameTimeoutMs);
 
     const result = landmarker.detectForVideo(video, time * 1000);
-    const landmarks = toLandmarks(result, width, height);
+    const { landmarks, worldLandmarks } = toLandmarks(result, width, height);
     if (landmarks.length === 0) missedFrames += 1;
 
     // timestampMs is derived from the real media time, never from the frame
     // index — dt everywhere in the physics reads it, so it must stay truthful
     // whatever sampling rate was chosen above.
-    frames.push({ index: i, timestampMs: (time - startSeconds) * 1000, landmarks });
+    frames.push({
+      index: i,
+      timestampMs: (time - startSeconds) * 1000,
+      landmarks,
+      worldLandmarks,
+    });
     onProgress?.((i + 1) / frameCount);
   }
 

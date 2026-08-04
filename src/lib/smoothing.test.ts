@@ -83,4 +83,48 @@ describe("smoothSequence", () => {
     });
     expect(maxShift).toBeLessThan(15);
   });
+
+  // World landmarks feed the passing technique's angle formulas the same way
+  // the pixel track feeds the spike's, and their depth axis is the model's
+  // noisiest — an unsmoothed world track would read as visibly jumpy angles.
+  it("smooths world landmarks the same way it smooths pixel landmarks", () => {
+    const sequence = generateMockSequence({ noisePixels: 4, seed: 7 });
+    const before = sequence.frames[10]!.worldLandmarks![16]!.x;
+
+    const smoothed = smoothSequence(sequence, { windowSize: 5, polyOrder: 2 });
+
+    // Input is not mutated.
+    expect(sequence.frames[10]!.worldLandmarks![16]!.x).toBe(before);
+    // Output actually changed — the filter did something, not a no-op copy.
+    expect(smoothed.frames[10]!.worldLandmarks![16]!.x).not.toBe(before);
+    expect(smoothed.frames).toHaveLength(sequence.frames.length);
+  });
+
+  it("leaves frames without world landmarks completely untouched", () => {
+    // A hand-built fixture, as described in PoseFrame's doc comment: pixel
+    // landmarks only, no world data. Smoothing must not invent any. pixelX
+    // has a deliberate wobble (not a straight ramp) so the Savitzky-Golay
+    // filter actually changes it — a pure ramp is reproduced exactly and
+    // would make the "smoothing ran" sanity check below a false negative.
+    const pixelXs = [10, 22, 15, 41, 33];
+    const sequence: ReturnType<typeof generateMockSequence> = {
+      frames: pixelXs.map((pixelX, i) => ({
+        index: i,
+        timestampMs: i * 33,
+        landmarks: [{ x: pixelX / 100, y: 0.2, z: 0, visibility: 1, pixelX, pixelY: 20, pixelZ: 0 }],
+      })),
+      fps: 30,
+      videoWidth: 100,
+      videoHeight: 100,
+    };
+
+    const smoothed = smoothSequence(sequence, { windowSize: 5, polyOrder: 2 });
+
+    // Pixel smoothing still ran (sanity check this is the same code path)...
+    expect(smoothed.frames[2]!.landmarks[0]!.pixelX).not.toBe(
+      sequence.frames[2]!.landmarks[0]!.pixelX,
+    );
+    // ...but no worldLandmarks field was manufactured anywhere.
+    smoothed.frames.forEach((frame) => expect(frame.worldLandmarks).toBeUndefined());
+  });
 });

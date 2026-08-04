@@ -14,7 +14,7 @@
  */
 
 import { LM } from "./landmarks";
-import type { PoseLandmark, PoseFrame, PoseSequence } from "../types/pose";
+import type { PoseLandmark, PoseFrame, PoseSequence, WorldLandmark } from "../types/pose";
 
 export interface MockOptions {
   fps?: number;
@@ -39,6 +39,20 @@ export interface MockOptions {
   noisePixels?: number;
   seed?: number;
 }
+
+/**
+ * Nominal shoulder-midpoint-to-hip-midpoint torso length used to derive the
+ * pixel→metre conversion for the synthetic world landmarks, in metres. 0.5 m
+ * is a reasonable adult figure. It is deliberately a single constant fed
+ * through a per-frame scale factor (`0.5 / torsoLength`, where `torsoLength`
+ * is *this generator's own* pixel torso for the frame) rather than a fixed
+ * pixels-per-metre number: the pixel rig already shrinks the torso with
+ * `perspective` to fake the player moving away from the camera, and the
+ * world track must not inherit that as if the athlete were physically
+ * shrinking — exactly the distortion the app's real dynamic scale-factor
+ * calibration (§4A) exists to cancel from actual footage.
+ */
+const NOMINAL_TORSO_METERS = 0.5;
 
 const DEFAULTS: Required<MockOptions> = {
   // 60 fps: a spike's cocking→contact window is ~150 ms, which 30 fps resolves
@@ -238,10 +252,40 @@ export function generateMockSequence(options: MockOptions = {}): PoseSequence {
       });
     }
 
+    // --- World landmarks: the same skeleton, re-expressed in metric space
+    // with the origin re-centred on the hip midpoint, the way MediaPipe's
+    // real world-landmark output is defined (types/pose.ts WorldLandmark).
+    // Built from the jittered pixel landmarks above (not the clean generator
+    // points) so a world-space angle and its pixel-space equivalent measure
+    // the *same* noisy skeleton — an affine map (translate + uniform scale)
+    // preserves angles exactly, so this is also what proves the conversion
+    // does not silently distort anything.
+    const hipMidPixelX = (landmarks[LM.LEFT_HIP]!.pixelX + landmarks[LM.RIGHT_HIP]!.pixelX) / 2;
+    const hipMidPixelY = (landmarks[LM.LEFT_HIP]!.pixelY + landmarks[LM.RIGHT_HIP]!.pixelY) / 2;
+    // Metres per pixel, derived from this frame's own (perspective-shrunk)
+    // torso rather than a constant — see NOMINAL_TORSO_METERS.
+    const worldScale = NOMINAL_TORSO_METERS / torsoLength;
+
+    const worldLandmarks: WorldLandmark[] = landmarks.map((lm) => ({
+      x: (lm.pixelX - hipMidPixelX) * worldScale,
+      // Pixel y is already DOWN-positive and so is world y (see
+      // WorldLandmark's doc comment) — no sign flip, straight rescale.
+      y: (lm.pixelY - hipMidPixelY) * worldScale,
+      // The mock is a planar (side-on) model: pixelZ is exactly 0 for every
+      // landmark (see the comment above), so world z is 0 too. That means
+      // this fixture can only exercise in-plane world-space geometry — it
+      // cannot test depth-axis logic (e.g. anything that keys on the ~45°
+      // passing camera angle). Whoever builds the passing mock needs a
+      // genuinely non-planar skeleton for that.
+      z: 0,
+      visibility: lm.visibility,
+    }));
+
     frames.push({
       index: i,
       timestampMs: (i * 1000) / o.fps,
       landmarks,
+      worldLandmarks,
     });
   }
 

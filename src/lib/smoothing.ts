@@ -11,7 +11,7 @@
  * boxcar filter flattens and shifts.
  */
 
-import type { PoseFrame, PoseSequence } from "../types/pose";
+import type { PoseFrame, PoseSequence, WorldLandmark } from "../types/pose";
 
 export type SmoothingMethod = "savgol" | "movingAverage" | "none";
 
@@ -190,6 +190,16 @@ export function smoothSeries(
  * from the filter input and left untouched in the output — smoothing across a
  * detection gap would drag the trajectory toward a phantom position.
  *
+ * World landmarks (metres, hip-midpoint origin — see types/pose.ts) get the
+ * identical treatment for the identical reason: they feed the passing
+ * technique's angle formulas the way the pixel track feeds the spike's, and
+ * their depth axis is the noisiest of the three since MediaPipe infers it
+ * rather than reading it off the image. Sequences built without world
+ * landmarks (hand-built fixtures, or any frame where detection failed) are
+ * left exactly as they arrived — there is nothing to smooth and no run to
+ * interpolate across, so this must never manufacture data that was not
+ * there.
+ *
  * Returns a new sequence; the input is not mutated.
  */
 export function smoothSequence(
@@ -200,24 +210,55 @@ export function smoothSequence(
   if (frames.length === 0) return sequence;
 
   const landmarkCount = Math.max(...frames.map((f) => f.landmarks.length));
-  if (!Number.isFinite(landmarkCount) || landmarkCount === 0) return sequence;
+  const hasPixelLandmarks = Number.isFinite(landmarkCount) && landmarkCount > 0;
+  const hasWorldLandmarks = frames.some((f) => (f.worldLandmarks?.length ?? 0) > 0);
+
+  // Nothing tracked at all (pixel or world) — hand back the input untouched,
+  // same as before world landmarks existed.
+  if (!hasPixelLandmarks && !hasWorldLandmarks) return sequence;
 
   const output: PoseFrame[] = frames.map((frame) => ({
     ...frame,
     landmarks: frame.landmarks.map((lm) => ({ ...lm })),
+    worldLandmarks: frame.worldLandmarks?.map((wlm) => ({ ...wlm })),
   }));
 
   const channels = ["x", "y", "z", "pixelX", "pixelY", "pixelZ"] as const;
 
-  for (let index = 0; index < landmarkCount; index += 1) {
-    // Contiguous runs of tracked frames are smoothed independently.
-    let runStart = -1;
-    for (let f = 0; f <= frames.length; f += 1) {
-      const tracked = f < frames.length && frames[f]!.landmarks[index] != null;
-      if (tracked && runStart === -1) runStart = f;
-      if (!tracked && runStart !== -1) {
-        smoothRun(output, index, runStart, f, channels, options);
-        runStart = -1;
+  if (hasPixelLandmarks) {
+    for (let index = 0; index < landmarkCount; index += 1) {
+      // Contiguous runs of tracked frames are smoothed independently.
+      let runStart = -1;
+      for (let f = 0; f <= frames.length; f += 1) {
+        const tracked = f < frames.length && frames[f]!.landmarks[index] != null;
+        if (tracked && runStart === -1) runStart = f;
+        if (!tracked && runStart !== -1) {
+          smoothRun(output, index, runStart, f, channels, options);
+          runStart = -1;
+        }
+      }
+    }
+  }
+
+  if (hasWorldLandmarks) {
+    const worldLandmarkCount = Math.max(
+      ...frames.map((f) => f.worldLandmarks?.length ?? 0),
+    );
+    const worldChannels: readonly (keyof WorldLandmark & string)[] = ["x", "y", "z"];
+
+    for (let index = 0; index < worldLandmarkCount; index += 1) {
+      // Same contiguous-run logic as the pixel loop above, keyed off whether
+      // *this* frame carries a world landmark at all — a clip where detection
+      // dropped a frame has no worldLandmarks entry for it, so the run simply
+      // ends there rather than smoothing across the gap.
+      let runStart = -1;
+      for (let f = 0; f <= frames.length; f += 1) {
+        const tracked = f < frames.length && frames[f]!.worldLandmarks?.[index] != null;
+        if (tracked && runStart === -1) runStart = f;
+        if (!tracked && runStart !== -1) {
+          smoothWorldRun(output, index, runStart, f, worldChannels, options);
+          runStart = -1;
+        }
       }
     }
   }
@@ -244,6 +285,36 @@ function smoothRun(
     const smoothed = smoothSeries(raw, options);
     for (let i = 0; i < length; i += 1) {
       frames[start + i]!.landmarks[landmarkIndex]![channel] = smoothed[i]!;
+    }
+  }
+}
+
+/**
+ * Same run-smoothing as {@link smoothRun}, over the metric world-space track
+ * instead of the pixel one. Kept as a separate function rather than a shared
+ * generic: the two landmark shapes (pixel channels vs. x/y/z-only world
+ * channels) are different enough that forcing one signature over both would
+ * cost more clarity than the few duplicated lines save.
+ */
+function smoothWorldRun(
+  frames: PoseFrame[],
+  landmarkIndex: number,
+  start: number,
+  end: number,
+  channels: readonly (keyof WorldLandmark & string)[],
+  options: SmoothingOptions,
+): void {
+  const length = end - start;
+  if (length < 3) return;
+
+  for (const channel of channels) {
+    const raw = new Array<number>(length);
+    for (let i = 0; i < length; i += 1) {
+      raw[i] = frames[start + i]!.worldLandmarks![landmarkIndex]![channel];
+    }
+    const smoothed = smoothSeries(raw, options);
+    for (let i = 0; i < length; i += 1) {
+      frames[start + i]!.worldLandmarks![landmarkIndex]![channel] = smoothed[i]!;
     }
   }
 }
