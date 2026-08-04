@@ -69,8 +69,13 @@ const DEFAULTS: Required<MockOptions> = {
   seed: 20260802,
 };
 
-/** Deterministic PRNG so mock clips and their tests are reproducible. */
-function mulberry32(seed: number): () => number {
+/**
+ * Deterministic PRNG so mock clips and their tests are reproducible.
+ * Exported so mockPass.ts (the serve-receive fixture) can reuse the same
+ * generator rather than maintaining a second copy — the two mocks share no
+ * other code, since one builds pixel-first and the other metric-first.
+ */
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a += 0x6d2b79f5;

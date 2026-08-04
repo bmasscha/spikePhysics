@@ -480,6 +480,15 @@ function averageDt(frames: readonly PoseFrame[]): number {
 export interface AnalyzeOptions {
   /** Override automatic hitting-arm detection. */
   hittingSide?: HittingSide;
+  /**
+   * Override the detected contact frame with one the coach marked.
+   *
+   * Peak wrist speed finds ball contact on a clean spike within a frame, but
+   * it has nothing to say about a mishit, a tooled block or a swing the player
+   * pulled out of — and every timing figure below is measured against this
+   * frame. The coach can see the ball; the detector cannot.
+   */
+  contactFrame?: number;
 }
 
 /**
@@ -505,7 +514,13 @@ export function analyzeSequence(
 
   const abductionSeries = shoulderAbductionSeries(frames, hittingSide);
   const elbowSeries = elbowFlexionSeries(frames, hittingSide);
-  const contactFrame = detectContactFrame(frames, hittingSide, scales);
+  // A coach-marked frame wins over the detector, but is still clamped into the
+  // clip: an out-of-range index would index past the series arrays and turn
+  // every downstream metric into a silent null rather than an obvious error.
+  const contactFrame =
+    options.contactFrame != null && frames.length > 0
+      ? Math.min(frames.length - 1, Math.max(0, Math.round(options.contactFrame)))
+      : detectContactFrame(frames, hittingSide, scales);
   const kineticChain = analyzeKineticChain(frames, hittingSide, scales);
   const elbowTiming = analyzeElbowTiming(frames, hittingSide, elbowSeries, contactFrame);
 

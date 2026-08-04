@@ -49,6 +49,23 @@ export interface KeyMoment {
   frame: number | null;
 }
 
+/** Options a technique's `analyze` accepts from the shell. */
+export interface AnalyzeOptions {
+  /**
+   * The key moment, set by the coach, overriding whatever the technique
+   * detects for itself.
+   *
+   * A spike hands its key moment over for free — the wrist decelerates hard at
+   * impact, so peak wrist speed lands within a frame of ball contact. A pass
+   * does not: MediaPipe never sees the ball, and a well-played platform is
+   * nearly motionless at contact. Since every number in a passing result is
+   * defined at or around that frame, being wrong about it is being wrong about
+   * everything at once — so the coach, who can see the ball, gets the last
+   * word. The shell scrubs to a frame and re-runs `analyze` with it.
+   */
+  keyFrame?: number;
+}
+
 export interface ScorecardProps<A extends BaseAnalysis> {
   analysis: A;
 }
@@ -87,11 +104,18 @@ export interface TechniqueDefinition<A extends BaseAnalysis = BaseAnalysis>
   extends TechniqueMeta {
   status: "ready";
   /** Runs the technique's biomechanics over an already-smoothed sequence. */
-  analyze: (sequence: PoseSequence) => A;
+  analyze: (sequence: PoseSequence, options?: AnalyzeOptions) => A;
   /** Synthetic sequence for the Demo clip button and for tests. */
   generateMock: () => PoseSequence;
   /** Jump targets for the dashboard transport bar, in playback order. */
   keyMoments: (analysis: A) => KeyMoment[];
+  /**
+   * What this technique calls its key moment, lower case — "contact" for both
+   * of the current two. The shell builds the coach's override control out of
+   * it ("Set contact here") so it can offer the correction without knowing
+   * what the moment means. See AnalyzeOptions.keyFrame.
+   */
+  keyFrameLabel: string;
   Scorecard: ComponentType<ScorecardProps<A>>;
   Charts: ComponentType<ChartsProps<A>>;
 }

@@ -37,7 +37,9 @@ export const spikeTechnique = defineTechnique<SpikeAnalysis>({
   // of MediaPipe inferences and a locked-up tablet, so only the first window
   // of this length is ever processed — was App.tsx's MAX_ANALYSIS_SECONDS.
   maxAnalysisSeconds: 10,
-  analyze: (sequence) => analyzeSequence(sequence),
+  analyze: (sequence, options) =>
+    analyzeSequence(sequence, { contactFrame: options?.keyFrame }),
+  keyFrameLabel: "contact",
   // App.tsx smoothed the mock sequence before analysing it; that step belongs
   // to the technique now, not the shell.
   generateMock: () => smoothSequence(generateMockSequence()),

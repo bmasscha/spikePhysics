@@ -197,6 +197,20 @@ export default function App() {
     setStage("analysis");
   }, [technique]);
 
+  /**
+   * Re-runs the current technique's analysis with a key moment the coach
+   * marked on the dashboard. Only the analysis is redone — the pose sequence
+   * is already in memory, so no MediaPipe pass is involved and the dashboard
+   * updates instantly.
+   */
+  const setKeyFrame = useCallback((frame: number) => {
+    setResult((current) =>
+      current
+        ? { ...current, analysis: current.technique.analyze(current.sequence, { keyFrame: frame }) }
+        : current,
+    );
+  }, []);
+
   const clipUrl = clip?.url ?? null;
   const maxAnalysisSeconds = technique?.maxAnalysisSeconds ?? 0;
 
@@ -412,6 +426,7 @@ export default function App() {
             analysis={result.analysis}
             videoUrl={clip?.url ?? null}
             clipStart={clip?.start ?? 0}
+            onSetKeyFrame={setKeyFrame}
           />
         )}
       </main>

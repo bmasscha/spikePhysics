@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import App from "./App";
+import { TECHNIQUES } from "./lib/techniques";
 
 // Auto-cleanup only registers itself when vitest runs with `globals: true`,
 // which this project does not; without it renders stack up across tests.
@@ -128,6 +129,41 @@ describe("App", () => {
     expect(screen.queryByText(/shoulder abduction at contact/i)).toBeNull();
     expect(screen.getByRole("button", { name: /demo clip/i })).toBeDefined();
   });
+
+  /**
+   * The coach's override. Contact is inferred from the landmarks alone —
+   * nothing in the pipeline ever sees the ball — so whoever is holding the
+   * tablet can correct it, and every figure is then measured against their
+   * frame instead. This walks the whole loop: scrub somewhere, mark it,
+   * and check the analysis really moved rather than just the play-head.
+   */
+  it("re-analyses around a contact frame the coach marks", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    renderAtCapture();
+    fireEvent.click(screen.getByRole("button", { name: /demo clip/i }));
+
+    // The play-head slider is the first range input on the dashboard.
+    const [playhead] = screen.getAllByRole("slider") as HTMLInputElement[];
+    fireEvent.change(playhead!, { target: { value: "12" } });
+
+    const markButton = screen.getByRole("button", { name: /set contact here/i });
+    expect((markButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(markButton);
+
+    // Marking the frame the play-head is already on makes the control
+    // redundant, which is the cheapest observable proof the analysis came
+    // back with keyFrame === 12 rather than its own detected frame.
+    expect(
+      (screen.getByRole("button", { name: /set contact here/i }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    // And the transport bar's "Contact" jump now returns to the marked frame.
+    fireEvent.change(playhead!, { target: { value: "3" } });
+    expect(screen.getByText(/frame 3\//)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /^contact$/i }));
+    expect(screen.getByText(/frame 12\//)).toBeDefined();
+  });
 });
 
 /**
@@ -140,23 +176,24 @@ describe("App — technique picker", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: /what are we analysing/i })).toBeDefined();
-    // Ready and coming-soon techniques both show up as cards.
     expect(screen.getByRole("button", { name: /analyse a spike/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /serve-receive/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /analyse a serve-receive/i })).toBeDefined();
   });
 
-  it("renders the coming-soon technique but keeps it unselectable", () => {
+  /**
+   * The picker still renders roadmap techniques as disabled cards (see
+   * TechniquePicker) — there just is not one registered any more, now that
+   * serve-receive is implemented. Asserting every registered technique is
+   * selectable keeps a technique that regresses to "coming soon", or one added
+   * to the registry without an implementation, from going unnoticed.
+   */
+  it("leaves every registered technique selectable", () => {
     render(<App />);
 
-    const comingSoon = screen.getByRole("button", { name: /serve-receive/i });
-    expect((comingSoon as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.click(comingSoon);
-
-    // A disabled control firing its handler anyway would be a real bug: still
-    // on the picker, capture screen never mounted.
-    expect(screen.getByRole("heading", { name: /what are we analysing/i })).toBeDefined();
-    expect(screen.queryByLabelText(/import video/i)).toBeNull();
+    for (const entry of TECHNIQUES) {
+      const card = screen.getByRole("button", { name: new RegExp(`analyse a ${entry.name}`, "i") });
+      expect((card as HTMLButtonElement).disabled).toBe(false);
+    }
   });
 
   it("reaches the capture screen once Spike is chosen", () => {
@@ -181,6 +218,25 @@ describe("App — technique picker", () => {
 
     // Back at the picker, and the dashboard went with it — not just hidden.
     expect(screen.getByRole("heading", { name: /what are we analysing/i })).toBeDefined();
+    expect(screen.queryByText(/hip → shoulder → elbow → wrist/)).toBeNull();
+  });
+
+  /**
+   * The same demo walk as above, through the other technique. The point is not
+   * the numbers — passing.test.ts covers those — but that choosing
+   * serve-receive mounts *its* dashboard: its scorecard groups and its charts,
+   * with none of the spike's, off its own mock and its own analysis.
+   */
+  it("reaches the serve-receive dashboard from its own card", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /analyse a serve-receive/i }));
+    fireEvent.click(screen.getByRole("button", { name: /demo clip/i }));
+
+    expect(screen.getByText(/platform at contact/i)).toBeDefined();
+    expect(screen.getByText(/angles through the pass/i)).toBeDefined();
+    // The spike's dashboard is nowhere near this one.
     expect(screen.queryByText(/hip → shoulder → elbow → wrist/)).toBeNull();
   });
 });

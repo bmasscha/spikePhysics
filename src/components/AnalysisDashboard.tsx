@@ -11,6 +11,11 @@ interface Props {
   videoUrl?: string | null;
   /** Seconds into the source video that frame 0 corresponds to. */
   clipStart?: number;
+  /**
+   * Re-runs the analysis with the coach's own key moment. Absent when the
+   * shell has nothing to re-analyse.
+   */
+  onSetKeyFrame?: (frame: number) => void;
 }
 
 /**
@@ -45,6 +50,7 @@ export default function AnalysisDashboard({
   analysis,
   videoUrl,
   clipStart = 0,
+  onSetKeyFrame,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [frameIndex, setFrameIndex] = useState(analysis.keyFrame ?? 0);
@@ -178,6 +184,24 @@ export default function AnalysisDashboard({
                 {moment.label}
               </button>
             ))}
+
+            {/*
+              The coach's correction. Detecting the key moment is a guess made
+              without ever seeing the ball — solid for a spike, genuinely hard
+              for a pass — and every figure on this screen is measured against
+              it. Whoever is holding the tablet can see the ball, so they get
+              the last word: scrub to the right frame, tap, and the analysis
+              re-runs on the same landmarks. No re-inference, so it is instant.
+            */}
+            {onSetKeyFrame && (
+              <button
+                className="btn-ghost ml-auto"
+                onClick={() => onSetKeyFrame(frameIndex)}
+                disabled={frameIndex === analysis.keyFrame}
+              >
+                Set {technique.keyFrameLabel} here
+              </button>
+            )}
           </div>
         </div>
 
