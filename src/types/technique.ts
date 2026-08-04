@@ -29,8 +29,8 @@ export interface BaseAnalysis {
   technique: TechniqueId;
   /**
    * Which side the analysis is anatomically mirrored off — the hitting arm for
-   * a spike, the dominant/platform side for a pass. Drives the overlay
-   * highlight.
+   * a spike, the dominant/platform side for a pass. The overlay draws the whole
+   * skeleton in one colour, so this only places the key-frame ring.
    */
   hittingSide: HittingSide;
   /**

@@ -5,6 +5,8 @@ import type { HittingSide, PoseSequence } from "../types/pose";
 interface Props {
   sequence: PoseSequence;
   frameIndex: number;
+  /** Only picks the wrist the key-frame ring goes around; the skeleton itself
+   * is drawn the same on both sides. */
   hittingSide: HittingSide;
   /**
    * Highlights the technique's key moment — ball contact for a spike, ball-on-
@@ -13,6 +15,9 @@ interface Props {
    */
   isKeyFrame?: boolean;
 }
+
+/** Cyan, used for every bone and joint — see the note in the draw loop. */
+const SKELETON_COLOR = "rgba(34, 211, 238, 0.95)";
 
 /**
  * Draws the tracked skeleton over the video. The canvas keeps the video's own
@@ -39,39 +44,33 @@ export default function SkeletonOverlay({
     if (!frame) return;
 
     const hitting = indicesFor(hittingSide);
-    const hittingChain = new Set([
-      hitting.shoulder,
-      hitting.elbow,
-      hitting.wrist,
-      hitting.hip,
-    ]);
-
     const scale = Math.max(1, width / 640);
+
+    // One colour for the whole skeleton. Dimming the bones outside the analysed
+    // side used to hint at which arm a spike was measured off, but it reads as
+    // "these joints are less reliable" — and on a pass, where both arms make the
+    // platform, singling out one side means nothing at all.
+    context.strokeStyle = SKELETON_COLOR;
+    context.lineWidth = 4 * scale;
+    context.lineCap = "round";
 
     for (const [a, b] of POSE_CONNECTIONS) {
       const from = getLandmark(frame, a);
       const to = getLandmark(frame, b);
       if (!from || !to) continue;
 
-      const onHittingChain = hittingChain.has(a) && hittingChain.has(b);
-      context.strokeStyle = onHittingChain
-        ? "rgba(34, 211, 238, 0.95)" // cyan: the arm being analysed
-        : "rgba(148, 163, 184, 0.55)";
-      context.lineWidth = (onHittingChain ? 5 : 3) * scale;
-      context.lineCap = "round";
       context.beginPath();
       context.moveTo(from.pixelX, from.pixelY);
       context.lineTo(to.pixelX, to.pixelY);
       context.stroke();
     }
 
+    context.fillStyle = SKELETON_COLOR;
     for (let index = 0; index < frame.landmarks.length; index += 1) {
       const landmark = getLandmark(frame, index);
       if (!landmark) continue;
-      const key = hittingChain.has(index);
-      context.fillStyle = key ? "#22d3ee" : "rgba(226, 232, 240, 0.7)";
       context.beginPath();
-      context.arc(landmark.pixelX, landmark.pixelY, (key ? 7 : 4) * scale, 0, Math.PI * 2);
+      context.arc(landmark.pixelX, landmark.pixelY, 5 * scale, 0, Math.PI * 2);
       context.fill();
     }
 
