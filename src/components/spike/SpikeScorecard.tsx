@@ -1,4 +1,6 @@
-import type { AnalysisResult, Rating } from "../types/pose";
+import type { ScorecardProps } from "../../types/technique";
+import type { Rating } from "../../types/pose";
+import type { SpikeAnalysis } from "../../types/spike";
 
 const RATING_STYLE: Record<Rating, { badge: string; ring: string; icon: string }> = {
   optimal: { badge: "bg-signal-ok/15 text-signal-ok", ring: "border-signal-ok/40", icon: "🟢" },
@@ -33,7 +35,7 @@ function Card({
   );
 }
 
-export default function MetricScorecard({ analysis }: { analysis: AnalysisResult }) {
+export default function SpikeScorecard({ analysis }: ScorecardProps<SpikeAnalysis>) {
   const { abductionAtContact, kineticChain, elbowTiming } = analysis;
 
   return (
@@ -68,15 +70,6 @@ export default function MetricScorecard({ analysis }: { analysis: AnalysisResult
         detail={`${elbowTiming.label}. ${elbowTiming.detail}`}
         rating={elbowTiming.rating}
       />
-
-      {analysis.warnings.map((warning) => (
-        <p
-          key={warning}
-          className="rounded-2xl border border-signal-warn/30 bg-signal-warn/10 p-3 text-sm text-signal-warn sm:col-span-3"
-        >
-          {warning}
-        </p>
-      ))}
     </div>
   );
 }

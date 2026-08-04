@@ -28,17 +28,8 @@ import {
   pixelPoint,
   spatialPoint,
 } from "./landmarks";
-import type {
-  AnalysisResult,
-  ElbowTimingResult,
-  HittingSide,
-  JointSeries,
-  KineticChainResult,
-  Metric,
-  PoseFrame,
-  PoseSequence,
-  Rating,
-} from "../types/pose";
+import type { ElbowTimingResult, JointSeries, KineticChainResult, SpikeAnalysis } from "../types/spike";
+import type { HittingSide, Metric, PoseFrame, PoseSequence, Rating } from "../types/pose";
 
 // ---------------------------------------------------------------------------
 // Coaching thresholds (§4B and §4D)
@@ -499,7 +490,7 @@ export interface AnalyzeOptions {
 export function analyzeSequence(
   sequence: PoseSequence,
   options: AnalyzeOptions = {},
-): AnalysisResult {
+): SpikeAnalysis {
   const { frames } = sequence;
   const warnings: string[] = [];
   const hittingSide = options.hittingSide ?? detectHittingSide(frames);
@@ -529,7 +520,10 @@ export function analyzeSequence(
   }
 
   return {
+    technique: "spike",
     hittingSide,
+    // Mirrors contactFrame: for a spike the shell's "key moment" IS ball contact.
+    keyFrame: contactFrame,
     contactFrame,
     scaleFactors: scales,
     abductionSeries,

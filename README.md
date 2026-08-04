@@ -1,9 +1,11 @@
 # SpikePhysics
 
-Offline-first, tablet-first PWA that turns a 5-second clip of a spike into
-actionable biomechanics. Everything — video capture, pose estimation, physics —
-runs in the browser on the coach's own tablet. Nothing is uploaded, no account
-is needed, and the app works in a sports hall with no Wi-Fi at all.
+Offline-first, tablet-first PWA that turns a short clip of a volleyball
+technique into actionable biomechanics. The coach picks a technique — spike is
+the one that's implemented today — then films or imports a clip for it.
+Everything — video capture, pose estimation, physics — runs in the browser on
+the coach's own tablet. Nothing is uploaded, no account is needed, and the app
+works in a sports hall with no Wi-Fi at all.
 
 **Live: https://bmasscha.github.io/spikePhysics/** — press *Demo clip* to see the
 full dashboard without a camera.
@@ -53,19 +55,52 @@ anywhere and it will 404 on Pages while working fine locally.
 src/
   lib/
     vectorMath.ts      pure vector/kinematics helpers (angles, speeds, derivatives)
-    biomechanics.ts    the four analyses: scale factor, abduction, kinetic chain, SSC
+    biomechanics.ts    the spike analyses: scale factor, abduction, kinetic chain, SSC
     smoothing.ts       Savitzky-Golay + moving average over landmark trajectories
     landmarks.ts       MediaPipe indices, hitting-side detection, skeleton topology
     poseEngine.ts      Tasks-Vision wrapper; seeks a video and returns landmarks
     videoDuration.ts   forces a real duration out of a clip that reports Infinity
     mockData.ts        synthetic spike generator (dev fixture + test ground truth)
-  components/          camera, trim slider, overlay, charts, scorecard, dashboard
-  types/pose.ts        shared landmark/analysis types
+    techniques/        the technique registry — see "Adding a technique" below
+  components/          camera, trim slider, overlay, dashboard shell, technique picker
+    spike/             spike-specific scorecard + charts
+  types/
+    technique.ts      the technique contract every technique implements
+    spike.ts          spike's result type
+    pose.ts           shared landmark/pose-sequence types
 e2e/                   Playwright specs + tiny committed video fixtures
 ```
 
-Pipeline: **record or import → trim → `processVideoElement` → `smoothSequence` →
-`analyzeSequence` → dashboard.**
+Pipeline: **pick a technique → record or import → trim → `processVideoElement`
+→ `smoothSequence` → technique's `analyze` → dashboard.** The stage machine in
+`src/App.tsx` runs `technique → capture → review → analysis`; the app always
+opens on the technique picker, and every stage after it is parameterised by
+the chosen technique (recording cap, filming hint, analysis, scorecard,
+charts). `src/lib/techniques/` is the extension point — nothing in `App.tsx`,
+`AnalysisDashboard` or `CameraModule` knows any technique by name.
+Technique-specific result types live in `src/types/<technique>.ts` and
+technique-specific dashboard components in `src/components/<technique>/`.
+
+### Adding a technique
+
+1. Define a result type extending `BaseAnalysis` (see `src/types/technique.ts`)
+   in `src/types/<technique>.ts`.
+2. Write the analysis — a function from a `PoseSequence` to that result type —
+   in `src/lib/`.
+3. Add a scorecard and a charts component for it under
+   `src/components/<technique>/`.
+4. In a new `src/lib/techniques/<technique>.ts`, export a `defineTechnique(...)`
+   value wiring the analysis, a mock-sequence generator, `keyMoments`, and the
+   two components together with the technique's metadata (name, blurb, icon,
+   capture hint, recording/analysis time caps).
+5. Register it by adding it to the `TECHNIQUES` array in
+   `src/lib/techniques/index.ts`.
+
+A technique that isn't implemented yet can be registered as an
+`UpcomingTechnique` instead of a full `defineTechnique(...)` — it still shows
+up on the picker, but as a disabled "coming soon" card. `serve-receive` in
+`src/lib/techniques/serveReceive.ts` is the live example: the id is reserved
+and the card is visible, with no analysis behind it yet.
 
 ## Importing footage instead of recording
 
@@ -79,11 +114,12 @@ deleted, and nothing is ever copied anywhere persistent.
 
 Three things are worth knowing:
 
-- Long clips default their trim window to the **last 10 seconds**, because the
-  spike is nearly always at the end of what a coach filmed. `MAX_ANALYSIS_SECONDS`
-  in `src/App.tsx` caps what is actually processed; a wider selection is
-  analysed from its start and the coach is told so on screen rather than having
-  it truncated silently.
+- Long clips default their trim window to the **last `maxAnalysisSeconds`**
+  (10 for spike), because the action is nearly always at the end of what a
+  coach filmed. `maxAnalysisSeconds` on the chosen technique
+  (`src/types/technique.ts`) caps what is actually processed; a wider
+  selection is analysed from its start and the coach is told so on screen
+  rather than having it truncated silently.
 - `video.duration` is frequently `Infinity` until the element has been seeked —
   both for Chrome's `MediaRecorder` blobs and for some phone containers.
   `src/lib/videoDuration.ts` forces it to resolve; a file that never yields a

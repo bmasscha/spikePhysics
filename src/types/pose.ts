@@ -61,48 +61,7 @@ export interface Metric<T = number> {
   detail: string;
 }
 
-export interface JointSeries {
-  joint: "hip" | "shoulder" | "elbow" | "wrist";
-  /** Speed per frame in torso-lengths/second; null where landmarks were lost. */
-  speed: (number | null)[];
-  /** Frame index of peak speed, or -1. */
-  peakFrame: number;
-  peakSpeed: number | null;
-}
-
-export interface KineticChainResult {
-  series: JointSeries[];
-  /** True when peaks fire hip → shoulder → elbow → wrist in order. */
-  isSequenced: boolean;
-  /** Frame indices in the order the joints actually peaked. */
-  observedOrder: JointSeries["joint"][];
-  message: string;
-  rating: Rating;
-}
-
-export interface ElbowTimingResult {
-  cockingEndFrame: number | null;
-  contactFrame: number | null;
-  extensionOnsetFrame: number | null;
-  /** Onset expressed as a fraction of the swing duration, [0,1]. */
-  onsetRatio: number | null;
-  rating: Rating;
-  label: string;
-  detail: string;
-}
-
-export interface AnalysisResult {
-  hittingSide: HittingSide;
-  contactFrame: number | null;
-  /** Torso-lengths per pixel, per frame. Null where the torso wasn't visible. */
-  scaleFactors: (number | null)[];
-  /** Shoulder abduction angle per frame, in degrees. */
-  abductionSeries: (number | null)[];
-  /** Elbow flexion angle per frame, in degrees (180 = fully extended). */
-  elbowSeries: (number | null)[];
-  abductionAtContact: Metric;
-  kineticChain: KineticChainResult;
-  elbowTiming: ElbowTimingResult;
-  /** Non-fatal issues worth surfacing to the coach. */
-  warnings: string[];
-}
+/*
+ * Technique-specific result types live next to their technique:
+ * spike → types/spike.ts, and the shared shell contract → types/technique.ts.
+ */

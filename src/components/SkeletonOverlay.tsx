@@ -6,8 +6,12 @@ interface Props {
   sequence: PoseSequence;
   frameIndex: number;
   hittingSide: HittingSide;
-  /** Highlights the frame identified as ball contact. */
-  isContactFrame?: boolean;
+  /**
+   * Highlights the technique's key moment — ball contact for a spike, ball-on-
+   * platform for a pass. Which frame that is comes from the technique's own
+   * analysis (`BaseAnalysis.keyFrame`); this component only draws the ring.
+   */
+  isKeyFrame?: boolean;
 }
 
 /**
@@ -19,7 +23,7 @@ export default function SkeletonOverlay({
   sequence,
   frameIndex,
   hittingSide,
-  isContactFrame,
+  isKeyFrame,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -71,7 +75,7 @@ export default function SkeletonOverlay({
       context.fill();
     }
 
-    if (isContactFrame) {
+    if (isKeyFrame) {
       const wrist = getLandmark(frame, hitting.wrist);
       if (wrist) {
         context.strokeStyle = "#f59e0b";
@@ -81,7 +85,7 @@ export default function SkeletonOverlay({
         context.stroke();
       }
     }
-  }, [sequence, frameIndex, hittingSide, isContactFrame]);
+  }, [sequence, frameIndex, hittingSide, isKeyFrame]);
 
   return (
     <canvas

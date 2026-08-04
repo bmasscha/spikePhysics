@@ -51,6 +51,17 @@ beforeEach(() => {
   revokedUrls.length = 0;
 });
 
+/**
+ * Renders the app and picks Spike from the technique picker — the app's new
+ * entry point, which every test below that exercises capture/review/analysis
+ * must get past first. Selects the card the way a coach would: by the card's
+ * own call-to-action text, not a test id.
+ */
+function renderAtCapture() {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: /analyse a spike/i }));
+}
+
 /** Picks a file through the import control, exactly as a coach would. */
 function importFile(name = "spike.mp4") {
   const input = screen.getByLabelText(/import video/i) as HTMLInputElement;
@@ -84,8 +95,8 @@ function trimHandles(): [HTMLInputElement, HTMLInputElement] {
  */
 describe("App", () => {
   it("mounts and offers a demo path when no camera is available", () => {
-    render(<App />);
-    expect(screen.getByText(/SpikePhysics|Spike/)).toBeDefined();
+    renderAtCapture();
+    expect(screen.getByRole("heading", { name: /spike\s*physics/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /demo clip/i })).toBeDefined();
   });
 
@@ -93,7 +104,7 @@ describe("App", () => {
     // Recharts measures its container, which jsdom reports as 0x0.
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    render(<App />);
+    renderAtCapture();
     fireEvent.click(screen.getByRole("button", { name: /demo clip/i }));
 
     expect(screen.getByText(/shoulder abduction at contact/i)).toBeDefined();
@@ -110,12 +121,67 @@ describe("App", () => {
   });
 
   it("wipes state when the session is deleted", () => {
-    render(<App />);
+    renderAtCapture();
     fireEvent.click(screen.getByRole("button", { name: /demo clip/i }));
     fireEvent.click(screen.getByRole("button", { name: /delete session/i }));
 
     expect(screen.queryByText(/shoulder abduction at contact/i)).toBeNull();
     expect(screen.getByRole("button", { name: /demo clip/i })).toBeDefined();
+  });
+});
+
+/**
+ * The app's new entry point. Everything above this line used to be the first
+ * screen mounted; now it is one tap away, gated on a technique choice, so
+ * that flow gets its own coverage rather than being assumed.
+ */
+describe("App — technique picker", () => {
+  it("is the first thing rendered, and lists every registered technique", () => {
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: /what are we analysing/i })).toBeDefined();
+    // Ready and coming-soon techniques both show up as cards.
+    expect(screen.getByRole("button", { name: /analyse a spike/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /serve-receive/i })).toBeDefined();
+  });
+
+  it("renders the coming-soon technique but keeps it unselectable", () => {
+    render(<App />);
+
+    const comingSoon = screen.getByRole("button", { name: /serve-receive/i });
+    expect((comingSoon as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(comingSoon);
+
+    // A disabled control firing its handler anyway would be a real bug: still
+    // on the picker, capture screen never mounted.
+    expect(screen.getByRole("heading", { name: /what are we analysing/i })).toBeDefined();
+    expect(screen.queryByLabelText(/import video/i)).toBeNull();
+  });
+
+  it("reaches the capture screen once Spike is chosen", () => {
+    renderAtCapture();
+
+    expect(screen.getByLabelText(/import video/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /demo clip/i })).toBeDefined();
+  });
+
+  it("exposes the chosen technique in the header, and returning to the picker wipes the session", () => {
+    // Recharts measures its container, which jsdom reports as 0x0.
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    renderAtCapture();
+    fireEvent.click(screen.getByRole("button", { name: /demo clip/i }));
+    // Reached the dashboard — confirms there is a real session to wipe. Not
+    // "shoulder abduction at contact": that phrase is also a bullet on the
+    // picker's own Spike card, so it would pass even with a stale dashboard.
+    expect(screen.getByText(/hip → shoulder → elbow → wrist/)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /technique: spike/i }));
+
+    // Back at the picker, and the dashboard went with it — not just hidden.
+    expect(screen.getByRole("heading", { name: /what are we analysing/i })).toBeDefined();
+    expect(screen.queryByText(/hip → shoulder → elbow → wrist/)).toBeNull();
   });
 });
 
@@ -126,19 +192,19 @@ describe("App", () => {
  */
 describe("App — importing a video", () => {
   it("offers the import control even with no camera available", () => {
-    render(<App />);
+    renderAtCapture();
     // jsdom has no getUserMedia, i.e. the `unsupported` state — the control
     // must still be there for a coach whose camera is blocked.
     expect(screen.getByLabelText(/import video/i)).toBeDefined();
   });
 
   it("does not set the capture attribute, which would force the camera", () => {
-    render(<App />);
+    renderAtCapture();
     expect(screen.getByLabelText(/import video/i).hasAttribute("capture")).toBe(false);
   });
 
   it("moves to review and populates the trim range once metadata resolves", async () => {
-    render(<App />);
+    renderAtCapture();
     importFile();
 
     // Review stage is up, but nothing is processable until a duration is known.
@@ -159,7 +225,7 @@ describe("App — importing a video", () => {
   });
 
   it("recovers when duration is initially Infinity", async () => {
-    render(<App />);
+    renderAtCapture();
     importFile();
 
     // What Chrome actually reports for a MediaRecorder blob and for some
@@ -179,7 +245,7 @@ describe("App — importing a video", () => {
   });
 
   it("defaults a long clip to its last seconds and warns if the selection is capped", async () => {
-    render(<App />);
+    renderAtCapture();
     importFile("rally.mp4");
 
     mediaDuration = 24;
@@ -198,7 +264,7 @@ describe("App — importing a video", () => {
   });
 
   it("surfaces a recovery message when the file cannot be decoded", async () => {
-    render(<App />);
+    renderAtCapture();
     importFile("clip.mov");
 
     fireEvent.error(reviewVideo());
@@ -209,7 +275,7 @@ describe("App — importing a video", () => {
   });
 
   it("revokes the object URL when a clip is replaced and when the session is deleted", async () => {
-    render(<App />);
+    renderAtCapture();
 
     importFile("first.mp4");
     const firstUrl = reviewVideo().getAttribute("src");

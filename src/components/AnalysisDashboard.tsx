@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import MetricCharts from "./MetricCharts";
-import MetricScorecard from "./MetricScorecard";
 import SkeletonOverlay from "./SkeletonOverlay";
-import type { AnalysisResult, PoseSequence } from "../types/pose";
+import type { PoseSequence } from "../types/pose";
+import type { AnyTechnique, BaseAnalysis } from "../types/technique";
 
 interface Props {
+  technique: AnyTechnique;
   sequence: PoseSequence;
-  analysis: AnalysisResult;
+  analysis: BaseAnalysis;
   /** Object URL of the recorded clip; absent in demo/mock mode. */
   videoUrl?: string | null;
   /** Seconds into the source video that frame 0 corresponds to. */
@@ -32,15 +32,22 @@ interface Props {
  *
  * Portrait scrolls the whole dashboard as one surface; only landscape, where
  * everything fits, gives the chart column its own scroller.
+ *
+ * Technique-agnostic note: this shell no longer knows spike from pass. The
+ * scorecard, the charts and the transport bar's jump targets all come from
+ * `technique` — see types/technique.ts for the contract. What stays here is
+ * what every technique shares: the play-head, the video, the skeleton overlay
+ * and the warning strip.
  */
 export default function AnalysisDashboard({
+  technique,
   sequence,
   analysis,
   videoUrl,
   clipStart = 0,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [frameIndex, setFrameIndex] = useState(analysis.contactFrame ?? 0);
+  const [frameIndex, setFrameIndex] = useState(analysis.keyFrame ?? 0);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const lastFrame = Math.max(0, sequence.frames.length - 1);
@@ -102,6 +109,9 @@ export default function AnalysisDashboard({
       ? sequence.videoWidth / sequence.videoHeight
       : 16 / 9;
 
+  const { Scorecard, Charts } = technique;
+  const keyMoments = technique.keyMoments(analysis);
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto split:grid split:grid-cols-2 split:overflow-hidden">
       <div className="flex flex-col gap-3 shrink-0 split:shrink split:min-h-0 split:flex-1">
@@ -132,11 +142,12 @@ export default function AnalysisDashboard({
             sequence={sequence}
             frameIndex={frameIndex}
             hittingSide={analysis.hittingSide}
-            isContactFrame={frameIndex === analysis.contactFrame}
+            isKeyFrame={frameIndex === analysis.keyFrame}
           />
 
           <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 font-mono text-xs tabular-nums">
-            frame {frameIndex}/{lastFrame} · {analysis.hittingSide} arm
+            {/* "side", not "arm": a pass is analysed off the platform, not one arm. */}
+            frame {frameIndex}/{lastFrame} · {analysis.hittingSide} side
           </div>
         </div>
 
@@ -157,28 +168,33 @@ export default function AnalysisDashboard({
                 {isPlaying ? "Pause" : "Play"}
               </button>
             )}
-            <button
-              className="btn-ghost"
-              onClick={() => jumpTo(analysis.elbowTiming.cockingEndFrame)}
-              disabled={analysis.elbowTiming.cockingEndFrame == null}
-            >
-              Cocking end
-            </button>
-            <button
-              className="btn-ghost"
-              onClick={() => jumpTo(analysis.contactFrame)}
-              disabled={analysis.contactFrame == null}
-            >
-              Contact
-            </button>
+            {keyMoments.map((moment) => (
+              <button
+                key={moment.label}
+                className="btn-ghost"
+                onClick={() => jumpTo(moment.frame)}
+                disabled={moment.frame == null}
+              >
+                {moment.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <MetricScorecard analysis={analysis} />
+        <Scorecard analysis={analysis} />
+
+        {analysis.warnings.map((warning) => (
+          <p
+            key={warning}
+            className="rounded-2xl border border-signal-warn/30 bg-signal-warn/10 p-3 text-sm text-signal-warn"
+          >
+            {warning}
+          </p>
+        ))}
       </div>
 
       <div className="shrink-0 split:shrink split:min-h-0 split:overflow-y-auto">
-        <MetricCharts
+        <Charts
           analysis={analysis}
           frameIndex={frameIndex}
           onSeekFrame={(frame) => jumpTo(frame)}

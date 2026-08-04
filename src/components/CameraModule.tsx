@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-
-/** Hard cap from the brief: 5 s keeps the inference pass under a few seconds. */
-const MAX_RECORDING_MS = 5000;
+import type { TechniqueMeta } from "../types/technique";
 
 interface Props {
+  /** The chosen technique's capture rules — how long to record and what to frame. */
+  technique: TechniqueMeta;
   onClipRecorded: (blob: Blob, url: string) => void;
   /** Called with a file the coach picked from device storage, plus its object URL. */
   onVideoImported: (file: File, url: string) => void;
@@ -17,6 +17,7 @@ type CameraState = "idle" | "ready" | "recording" | "denied" | "unsupported";
  * angle available, because coaches film from the sideline at 5–10 m.
  */
 export default function CameraModule({
+  technique,
   onClipRecorded,
   onVideoImported,
   onUseMockData,
@@ -29,6 +30,12 @@ export default function CameraModule({
   const [state, setState] = useState<CameraState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+
+  // Per-technique cap, not a fixed 5 s: a spike is over in an instant, but a
+  // pass rally the coach wants the platform contact from can run longer. The
+  // cap still exists for the same reason it always did — it keeps the
+  // inference pass, which runs entirely on-device, under a few seconds.
+  const maxRecordingMs = technique.maxRecordingSeconds * 1000;
 
   useEffect(() => {
     let cancelled = false;
@@ -120,8 +127,8 @@ export default function CameraModule({
     };
     requestAnimationFrame(tick);
 
-    stopTimerRef.current = window.setTimeout(stopRecording, MAX_RECORDING_MS);
-  }, [onClipRecorded, stopRecording]);
+    stopTimerRef.current = window.setTimeout(stopRecording, maxRecordingMs);
+  }, [maxRecordingMs, onClipRecorded, stopRecording]);
 
   const handleFileChosen = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -138,7 +145,7 @@ export default function CameraModule({
   );
 
   const recording = state === "recording";
-  const remaining = Math.max(0, MAX_RECORDING_MS - elapsed) / 1000;
+  const remaining = Math.max(0, maxRecordingMs - elapsed) / 1000;
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -153,6 +160,25 @@ export default function CameraModule({
 
         {/* Framing guide: the whole body must fit inside the box. */}
         <div className="pointer-events-none absolute inset-6 rounded-2xl border-2 border-dashed border-signal-accent/30" />
+
+        {/*
+          Per-technique framing advice. Anchored to the bottom of the preview,
+          inside the dashed guide, rather than above the video: it needs to sit
+          near the thing it explains without covering the coach's view of the
+          subject (usually centred, upper frame) or eating into the fixed-height
+          controls row below, which an in-flow element here would do since this
+          box is absolutely positioned and takes no layout space.
+        */}
+        {/*
+          Gone the moment recording starts: the banner sits over the bottom of
+          the frame, which is exactly where the feet are, and the hint itself
+          asks for the whole body in shot. It has done its job by then anyway.
+        */}
+        {!recording && (
+          <div className="pointer-events-none absolute inset-x-6 bottom-6 rounded-xl bg-black/70 px-3 py-2 text-center text-xs text-slate-200 split:text-sm">
+            {technique.captureHint}
+          </div>
+        )}
 
         {recording && (
           <div className="absolute left-6 top-6 flex items-center gap-2 rounded-full bg-black/70 px-4 py-2">
@@ -209,7 +235,7 @@ export default function CameraModule({
         </button>
 
         <div className="min-w-tap text-sm text-slate-400">
-          max&nbsp;{MAX_RECORDING_MS / 1000}s
+          max&nbsp;{technique.maxRecordingSeconds}s
         </div>
       </div>
     </div>

@@ -1,32 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AnalysisDashboard from "./components/AnalysisDashboard";
 import CameraModule from "./components/CameraModule";
+import TechniquePicker from "./components/TechniquePicker";
 import TrimSlider from "./components/TrimSlider";
-import { analyzeSequence } from "./lib/biomechanics";
-import { generateMockSequence } from "./lib/mockData";
 import { disposePoseLandmarker, PoseEngineError, processVideoElement } from "./lib/poseEngine";
 import { smoothSequence } from "./lib/smoothing";
 import { resolveVideoDuration, UNREADABLE_VIDEO_HINT } from "./lib/videoDuration";
-import type { AnalysisResult, PoseSequence } from "./types/pose";
+import type { PoseSequence } from "./types/pose";
+import type { AnyTechnique, BaseAnalysis } from "./types/technique";
 
-type Stage = "capture" | "review" | "analysis";
+type Stage = "technique" | "capture" | "review" | "analysis";
 
 /** Where the clip came from. Only used for copy, never for pipeline branching. */
 type ClipSource = "recording" | "import";
 
 /** Whether a real duration is known yet for the clip sitting in review. */
 type ClipStatus = "reading" | "ready" | "unreadable";
-
-/**
- * Longest window the analysis will actually process, in seconds.
- *
- * An imported clip can be minutes long; at ~30 samples/s that is thousands of
- * MediaPipe inferences and a locked-up tablet. When the coach's selection is
- * longer we process the FIRST MAX_ANALYSIS_SECONDS of it — the window then
- * starts exactly where they put the start handle — and say so on screen. The
- * one thing we never do is truncate silently.
- */
-const MAX_ANALYSIS_SECONDS = 10;
 
 /**
  * How long to wait for `loadedmetadata` before declaring the file unreadable.
@@ -45,17 +34,35 @@ interface Clip {
 }
 
 /**
+ * A finished analysis, kept together with the technique that produced it.
+ *
+ * These three are one piece of state rather than three, and that is load
+ * bearing: a technique's `analyze` returns a result only that technique's own
+ * cards and charts can read, and the registry erases that result type to
+ * `BaseAnalysis` (see defineTechnique). Bundling them means the pair physically
+ * cannot drift — there is no ordering of setState calls that leaves a spike
+ * analysis sitting next to the serve-receive dashboard.
+ */
+interface Result {
+  technique: AnyTechnique;
+  sequence: PoseSequence;
+  analysis: BaseAnalysis;
+}
+
+/**
  * Initial trim window for a freshly loaded clip.
  *
- * For a long clip the spike is almost always at the end — the coach films the
- * rally and stops after the hit — so default to the last MAX_ANALYSIS_SECONDS
- * rather than the first, which would otherwise analyse the approach of the
- * previous point. Both handles stay fully adjustable. Short clips keep the
- * whole 0..duration range, as before.
+ * For a long clip the action is almost always at the end — the coach films the
+ * rally and stops after the hit — so default to the last `maxSeconds` rather
+ * than the first, which would otherwise analyse the previous point. Both
+ * handles stay fully adjustable. Short clips keep the whole 0..duration range.
  */
-function defaultTrimWindow(duration: number): { start: number; end: number } {
-  return duration > MAX_ANALYSIS_SECONDS
-    ? { start: duration - MAX_ANALYSIS_SECONDS, end: duration }
+function defaultTrimWindow(
+  duration: number,
+  maxSeconds: number,
+): { start: number; end: number } {
+  return duration > maxSeconds
+    ? { start: duration - maxSeconds, end: duration }
     : { start: 0, end: duration };
 }
 
@@ -92,34 +99,62 @@ export default function App() {
    */
   const clipUrlRef = useRef<string | null>(null);
 
-  const [stage, setStage] = useState<Stage>("capture");
+  const [stage, setStage] = useState<Stage>("technique");
+  /**
+   * The technique every stage after the picker is parameterised by: which
+   * biomechanics run, how long a clip may be, what the cards and charts show.
+   * Null only before the coach has chosen. Nothing downstream knows any
+   * technique by name — see lib/techniques.
+   */
+  const [technique, setTechnique] = useState<AnyTechnique | null>(null);
   const [clip, setClip] = useState<Clip | null>(null);
   const [clipStatus, setClipStatus] = useState<ClipStatus>("reading");
-  const [sequence, setSequence] = useState<PoseSequence | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Wipes everything. Nothing was ever written to disk — footage and landmarks
-   * live only in this tab's memory — so dropping state and revoking the object
-   * URL is a complete erase (§5).
+   * Drops everything belonging to the current clip. Nothing was ever written to
+   * disk — footage and landmarks live only in this tab's memory — so this plus
+   * revoking the object URL is a complete erase (§5).
+   *
+   * The chosen technique is a preference, not session data, so it survives.
    */
-  const deleteSession = useCallback(() => {
+  const clearSession = useCallback(() => {
     if (clipUrlRef.current) {
       URL.revokeObjectURL(clipUrlRef.current);
       clipUrlRef.current = null;
     }
     setClip(null);
     setClipStatus("reading");
-    setSequence(null);
-    setAnalysis(null);
+    setResult(null);
     setError(null);
     setProgress(0);
-    setStage("capture");
     disposePoseLandmarker();
   }, []);
+
+  const deleteSession = useCallback(() => {
+    clearSession();
+    setStage(technique ? "capture" : "technique");
+  }, [clearSession, technique]);
+
+  const chooseTechnique = useCallback(
+    (chosen: AnyTechnique) => {
+      // Switching technique mid-session must not carry a spike analysis into a
+      // serve-receive dashboard: the result types differ, and so does what the
+      // footage was even filmed for.
+      clearSession();
+      setTechnique(chosen);
+      setStage("capture");
+    },
+    [clearSession],
+  );
+
+  const changeTechnique = useCallback(() => {
+    clearSession();
+    setStage("technique");
+  }, [clearSession]);
 
   /**
    * Single entry point for both capture routes. Recordings and imports share
@@ -133,8 +168,7 @@ export default function App() {
 
     setClip({ url, source, duration: 0, start: 0, end: 0 });
     setClipStatus("reading");
-    setSequence(null);
-    setAnalysis(null);
+    setResult(null);
     setProgress(0);
     setError(null);
     setStage("review");
@@ -151,9 +185,9 @@ export default function App() {
   );
 
   const handleUseMockData = useCallback(() => {
-    const mock = smoothSequence(generateMockSequence());
-    setSequence(mock);
-    setAnalysis(analyzeSequence(mock));
+    if (!technique) return;
+    const mock = technique.generateMock();
+    setResult({ technique, sequence: mock, analysis: technique.analyze(mock) });
     // Normally the demo dashboard has no video attached. See
     // demoVideoUrlFromLocation for the one exception.
     const demoVideo = demoVideoUrlFromLocation();
@@ -161,9 +195,10 @@ export default function App() {
       demoVideo ? { url: demoVideo, source: "import", duration: 0, start: 0, end: 0 } : null,
     );
     setStage("analysis");
-  }, []);
+  }, [technique]);
 
   const clipUrl = clip?.url ?? null;
+  const maxAnalysisSeconds = technique?.maxAnalysisSeconds ?? 0;
 
   /**
    * Resolves the clip's real duration once it is mounted in the review stage.
@@ -196,7 +231,7 @@ export default function App() {
         setClipStatus("ready");
         setClip((current) =>
           current && current.url === clipUrl
-            ? { ...current, duration, ...defaultTrimWindow(duration) }
+            ? { ...current, duration, ...defaultTrimWindow(duration, maxAnalysisSeconds) }
             : current,
         );
       }, fail);
@@ -218,14 +253,14 @@ export default function App() {
       video.removeEventListener("loadedmetadata", onMetadata);
       video.removeEventListener("error", fail);
     };
-  }, [stage, clipUrl]);
+  }, [stage, clipUrl, maxAnalysisSeconds]);
 
   const selectionSeconds = clip ? clip.end - clip.start : 0;
-  const selectionCapped = selectionSeconds > MAX_ANALYSIS_SECONDS;
+  const selectionCapped = selectionSeconds > maxAnalysisSeconds;
 
   const process = useCallback(async () => {
     const video = reviewVideoRef.current;
-    if (!video || !clip || clipStatus !== "ready") return;
+    if (!video || !clip || !technique || clipStatus !== "ready") return;
 
     setBusy(true);
     setError(null);
@@ -234,13 +269,12 @@ export default function App() {
       const raw = await processVideoElement(video, {
         startSeconds: clip.start,
         // The cap is applied here, at the one place that decides how much work
-        // the tablet does. See MAX_ANALYSIS_SECONDS.
-        endSeconds: Math.min(clip.end, clip.start + MAX_ANALYSIS_SECONDS),
+        // the tablet does. See TechniqueMeta.maxAnalysisSeconds.
+        endSeconds: Math.min(clip.end, clip.start + technique.maxAnalysisSeconds),
         onProgress: setProgress,
       });
       const smoothed = smoothSequence(raw);
-      setSequence(smoothed);
-      setAnalysis(analyzeSequence(smoothed));
+      setResult({ technique, sequence: smoothed, analysis: technique.analyze(smoothed) });
       setStage("analysis");
     } catch (err) {
       setError(
@@ -251,7 +285,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [clip, clipStatus]);
+  }, [clip, clipStatus, technique]);
 
   const processLabel = busy
     ? `Processing… ${Math.round(progress * 100)}%`
@@ -263,15 +297,34 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col gap-3 p-safe">
-      <header className="flex items-center justify-between px-safe-1">
-        <h1 className="text-xl font-black tracking-tight">
-          Spike<span className="text-signal-accent">Physics</span>
-        </h1>
+      <header className="flex items-center justify-between gap-2 px-safe-1">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="text-xl font-black tracking-tight">
+            Spike<span className="text-signal-accent">Physics</span>
+          </h1>
+          {/*
+            The chosen technique is on screen at all times once picked: every
+            number below it is only meaningful for that technique, and a coach
+            who forgot which one they selected would misread the whole
+            dashboard. Doubles as the way back to the picker.
+          */}
+          {technique && stage !== "technique" && (
+            <button
+              className="btn-ghost min-w-0 truncate px-3 py-1 text-sm"
+              onClick={changeTechnique}
+              disabled={busy}
+              aria-label={`Technique: ${technique.name}. Change technique`}
+            >
+              <span aria-hidden="true">{technique.icon}</span> {technique.name}
+              <span className="ml-2 text-xs text-slate-400">change</span>
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <span className="hidden text-xs text-slate-500 sm:inline">
             100% on this tablet · nothing uploaded
           </span>
-          {stage !== "capture" && (
+          {stage !== "technique" && stage !== "capture" && (
             <button className="btn-danger" onClick={deleteSession}>
               Delete session
             </button>
@@ -286,8 +339,11 @@ export default function App() {
       )}
 
       <main className="min-h-0 flex-1">
-        {stage === "capture" && (
+        {stage === "technique" && <TechniquePicker onSelect={chooseTechnique} />}
+
+        {stage === "capture" && technique && (
           <CameraModule
+            technique={technique}
             onClipRecorded={handleClipRecorded}
             onVideoImported={handleVideoImported}
             onUseMockData={handleUseMockData}
@@ -328,9 +384,9 @@ export default function App() {
 
               {selectionCapped && (
                 <p className="rounded-2xl border border-signal-accent/40 bg-signal-accent/10 p-3 text-sm text-slate-200">
-                  Analysing the first {MAX_ANALYSIS_SECONDS}s of your{" "}
-                  {selectionSeconds.toFixed(1)}s selection — trim closer to the swing for
-                  the full window.
+                  Analysing the first {maxAnalysisSeconds}s of your{" "}
+                  {selectionSeconds.toFixed(1)}s selection — trim closer to the action
+                  for the full window.
                 </p>
               )}
 
@@ -349,10 +405,11 @@ export default function App() {
           </div>
         )}
 
-        {stage === "analysis" && sequence && analysis && (
+        {stage === "analysis" && result && (
           <AnalysisDashboard
-            sequence={sequence}
-            analysis={analysis}
+            technique={result.technique}
+            sequence={result.sequence}
+            analysis={result.analysis}
             videoUrl={clip?.url ?? null}
             clipStart={clip?.start ?? 0}
           />

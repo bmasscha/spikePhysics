@@ -257,6 +257,10 @@ describe("analyzeSequence", () => {
     // The demo clip is built to land in the elite abduction window.
     expect(result.abductionAtContact.value!).toBeGreaterThan(128);
     expect(result.abductionAtContact.value!).toBeLessThan(136);
+
+    // BaseAnalysis fields: keyFrame mirrors contactFrame for the spike shell.
+    expect(result.technique).toBe("spike");
+    expect(result.keyFrame).toBe(result.contactFrame);
   });
 
   it("recovers a built-in danger angle end to end", () => {

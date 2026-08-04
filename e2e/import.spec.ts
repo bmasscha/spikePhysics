@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { LANDSCAPE_CLIP } from "./fixtures";
+import { gotoSpikeCapture, LANDSCAPE_CLIP } from "./fixtures";
 
 /**
  * The import path in a real browser, which is the only place the
@@ -9,7 +9,7 @@ import { LANDSCAPE_CLIP } from "./fixtures";
  */
 test.describe("importing a video", () => {
   test("a picked file reaches the review stage with a real duration", async ({ page }) => {
-    await page.goto("./");
+    await gotoSpikeCapture(page);
 
     await page.getByLabel(/import video/i).setInputFiles(LANDSCAPE_CLIP);
 
@@ -32,7 +32,7 @@ test.describe("importing a video", () => {
   test("the import control works with no camera available", async ({ page }) => {
     // The Playwright browser has no camera, which is the same state a coach
     // sees after blocking the permission — the import control must still work.
-    await page.goto("./");
+    await gotoSpikeCapture(page);
     await expect(page.getByLabel(/import video/i)).toBeAttached();
     await page.getByLabel(/import video/i).setInputFiles(LANDSCAPE_CLIP);
     await expect(page.getByRole("button", { name: /choose another clip/i })).toBeVisible();

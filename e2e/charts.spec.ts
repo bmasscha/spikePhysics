@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { DEMO_VIDEO_NAME, LANDSCAPE_CLIP, PORTRAIT_CLIP, serveDemoVideo } from "./fixtures";
+import {
+  DEMO_VIDEO_NAME,
+  gotoSpikeCapture,
+  LANDSCAPE_CLIP,
+  PORTRAIT_CLIP,
+  serveDemoVideo,
+} from "./fixtures";
 
 /**
  * Regression cover for the bug where the two Recharts panels were invisible
@@ -16,7 +22,7 @@ const MIN_PANEL_HEIGHT = 100;
 const PANELS = ["chart-joint-speed", "chart-angles"] as const;
 
 async function openDashboard(page: Page, query = ""): Promise<void> {
-  await page.goto(`./${query}`);
+  await gotoSpikeCapture(page, query);
   await page.getByRole("button", { name: /demo clip/i }).click();
   await expect(page.getByTestId("chart-joint-speed")).toBeAttached();
 }
@@ -91,7 +97,9 @@ test.describe("chart visibility", () => {
     await serveDemoVideo(page, LANDSCAPE_CLIP);
     await openDashboard(page, `?demoVideo=${DEMO_VIDEO_NAME}`);
 
-    const readout = page.getByText(/^frame \d+\/\d+ · (left|right) arm$/);
+    // "side", not "arm": AnalysisDashboard's readout was generalised for
+    // techniques that aren't analysed off one arm (e.g. a pass's platform).
+    const readout = page.getByText(/^frame \d+\/\d+ · (left|right) side$/);
     await expect(readout).toBeVisible();
     const before = await readout.textContent();
 

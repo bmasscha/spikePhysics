@@ -20,3 +20,14 @@ export async function serveDemoVideo(page: Page, clipPath: string): Promise<void
     route.fulfill({ path: clipPath, contentType: "video/webm" }),
   );
 }
+
+/**
+ * Navigates to the app and picks Spike from the technique picker, landing on
+ * the capture screen. The app now opens on "what are we analysing?" rather
+ * than the camera/import screen directly, so every spec that used to
+ * `page.goto("./")` and expect capture-screen controls needs this first.
+ */
+export async function gotoSpikeCapture(page: Page, query = ""): Promise<void> {
+  await page.goto(`./${query}`);
+  await page.getByRole("button", { name: /analyse a spike/i }).click();
+}

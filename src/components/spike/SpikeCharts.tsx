@@ -15,14 +15,9 @@ import {
   ABDUCTION_DANGER_LOW,
   ABDUCTION_OPTIMAL_HIGH,
   ABDUCTION_OPTIMAL_LOW,
-} from "../lib/biomechanics";
-import type { AnalysisResult } from "../types/pose";
-
-interface Props {
-  analysis: AnalysisResult;
-  frameIndex: number;
-  onSeekFrame: (frame: number) => void;
-}
+} from "../../lib/biomechanics";
+import type { ChartsProps } from "../../types/technique";
+import type { SpikeAnalysis } from "../../types/spike";
 
 const JOINT_COLORS: Record<string, string> = {
   hip: "#f472b6",
@@ -47,7 +42,7 @@ const TOOLTIP_STYLE = {
  * because a 5 s clip at 60 fps is ~300 points per joint and the play-head
  * updates on every animation frame while the video plays.
  */
-export default function MetricCharts({ analysis, frameIndex, onSeekFrame }: Props) {
+export default function SpikeCharts({ analysis, frameIndex, onSeekFrame }: ChartsProps<SpikeAnalysis>) {
   const velocityData = useMemo(() => {
     const length = analysis.kineticChain.series[0]?.speed.length ?? 0;
     return Array.from({ length }, (_, frame) => {
